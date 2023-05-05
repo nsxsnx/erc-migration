@@ -308,12 +308,12 @@ class RegionDir:
                         rec.sum,
                         reaccural_details.type,
                     )
-                    self.reaccural_counter.update([reaccural_details.valid])
                     if not reaccural_details.valid:
                         gvs_reaccural_row.set_field(
                             38, "Не удалось разложить начисление на месяцы"
                         )
                     self.results.add_row(gvs_reaccural_row)
+                self.reaccural_counter.update([reaccural_details.valid])
             except NoServiceRow:
                 pass
             # endregion
