@@ -82,7 +82,7 @@ class Reaccural:
             rec.append(ReaccuralMonthRec(date, float(prev_accural)))
             floating_sum += prev_accural
             if abs(floating_sum) < second_prev_accural:
-                rec.append(ReaccuralMonthRec(date.previous, float(floating_sum)))
+                rec.append(ReaccuralMonthRec(date.previous, abs(float(floating_sum))))
                 self.records = rec[::-1]
                 self.valid = True
                 return
@@ -107,15 +107,16 @@ class Reaccural:
         if self.valid:
             return
         try:
-            _ = Decimal(
+            next_month_accural = Decimal(
                 self.account_data.get_service_month_accural(
                     self.date.next, "Тепловая энергия для подогрева воды"
                 )
             )
+            if not next_month_accural:
+                # account is closed, try another algorithm
+                self.try_decompose_to_previous_accurance()
         except NoServiceRow:
-            # account is closed, try another algorithm
+            # another sign of a closed account
             self.try_decompose_to_previous_accurance()
         if not self.valid:
-            self.records.append(
-                ReaccuralMonthRec(reaccural_date.previous, reaccural_sum)
-            )
+            self.records.append(ReaccuralMonthRec(reaccural_date, reaccural_sum))

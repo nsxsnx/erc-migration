@@ -32,6 +32,7 @@ class OsvAccuralRecord:
     gvs: float
     reaccural: float
     payment: float
+    gvs_elevated_percent: float
 
 
 @dataclass
@@ -54,6 +55,13 @@ class OsvAddressRecord:
             else:
                 continue
         raise ValueError(f"Can't understand value: {data}")
+
+
+@dataclass
+class OsvRecord:
+    "Stores OSV row"
+    address_record: OsvAddressRecord
+    accural_record: OsvAccuralRecord
 
 
 class OsvFile(BaseWorkBook):
@@ -90,3 +98,6 @@ class OsvFile(BaseWorkBook):
                 yield row
             else:
                 continue
+
+    def close(self):
+        self.workbook.close()

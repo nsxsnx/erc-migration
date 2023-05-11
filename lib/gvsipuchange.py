@@ -1,10 +1,12 @@
 " Classes to search for GVS IPUs changes"
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Type
 
 from lib.datatypes import MonthYear
 from lib.helpers import BaseWorkBookData
+from lib.resultfile import GvsIpuInstallDates, ResultRecordType
 
 
 @dataclass
@@ -72,3 +74,67 @@ class FilledResultTable(BaseWorkBookData):
                 )
             )
         self.records = res
+
+
+class IpuReplacementFinder:
+    """
+    Opens result table and searches for replacemnt
+    of IPUs relying on changes of IPU number
+    """
+
+    def __init__(self, file_name_full) -> None:
+        logging.info("Reading GVS IPU data from results table...")
+        self.table = FilledResultTable(
+            file_name_full,
+            3,
+            FilledResultRecord,
+            filter_func=lambda s: s.type == ResultRecordType.GVS_ACCURAL.name,
+            max_col=22,
+        )
+        logging.info("Reading GVS IPU data from results table done")
+
+    def find_replacements(self):
+        "Actually does the job"
+        logging.info("Looking for IPU replacement...")
+        active_sheet = self.table.workbook.active
+        gvs_accounts = self.table.get_field_values("account")
+        total_ipu_replacements = 0
+        for gvs_account in gvs_accounts:
+            counters: list[GvsIpuMetric] = self.table.as_filtered_list(
+                ("account",), (gvs_account,)
+            )
+            ignore_next = False
+            for i, current_el in enumerate(counters[:-1]):
+                next_el = counters[i + 1]
+                if ignore_next:
+                    ignore_next = False
+                    continue
+                if current_el.date == next_el.date:
+                    ignore_next = True
+                    continue
+                if current_el.counter_number != next_el.counter_number:
+                    row_num = current_el.row
+                    type_cell = active_sheet[f"U{row_num}"]
+                    type_cell.value = "При снятии прибора"
+                    if next_el.counter_number:
+                        row_num = next_el.row
+                        type_cell = active_sheet[f"U{row_num}"]
+                        type_cell.value = "При установке"
+                    GvsIpuInstallDates[gvs_account] = next_el.metric_date
+                    logging.debug(current_el)
+                    logging.debug(next_el)
+                    total_ipu_replacements += 1
+                if gvs_account in GvsIpuInstallDates:
+                    row_num = next_el.row
+                    date_cell = active_sheet[f"K{row_num}"]
+                    date_cell.value = GvsIpuInstallDates[gvs_account]
+        logging.info(
+            "Total additional IPU replacements found: %s", total_ipu_replacements
+        )
+
+    def save(self):
+        "Saves opened table"
+        logging.info("Saving results...")
+        self.table.save()
+        self.table.close()
+        logging.info("Saving results done")

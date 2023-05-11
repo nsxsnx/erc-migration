@@ -16,38 +16,38 @@ from lib.detailsfile import (
     GvsDetailsRecord,
 )
 from lib.exceptions import NoServiceRow
-from lib.gvsipuchange import FilledResultRecord, FilledResultTable, GvsIpuMetric
+from lib.gvsipuchange import IpuReplacementFinder
 from lib.helpers import ExcelHelpers
 from lib.osvfile import (
     OSVDATA_REGEXP,
     OsvAccuralRecord,
     OsvAddressRecord,
     OsvFile,
+    OsvRecord,
     osvdata_regexp_compiled,
 )
 from lib.reaccural import Reaccural, ReaccuralType
 from lib.resultfile import (
-    GvsIpuInstallDates,
     GvsMultipleResultFirstRow,
     GvsMultipleResultSecondRow,
     GvsReaccuralResultRow,
     GvsSingleResultRow,
     HeatingResultRow,
     ResultFile,
-    ResultRecordType,
 )
 
 CONFIG_PATH = "./config.ini"
 
 
 @dataclass
-class RowIndex:
-    "Indexes of fields in rhe table, zero-based"
+class ColumnIndex:
+    "Indexes of fields in the table, zero-based"
     address: int
     heating: int
     gvs: int
     reaccurance: int
     total: int
+    gvs_elevated_percent: int
 
 
 class RegionDir:
@@ -60,6 +60,9 @@ class RegionDir:
         self.base_dir = base_dir
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
         self.osv_file: OsvFile | None = None
+        self.osv: OsvRecord | None = None
+        self.account: str | None = None
+        self.account_details: AccountDetailsFileSingleton | None = None
         logging.info("Reading ODPU addresses...")
         self.odpus = AddressFile(
             os.path.join(self.base_dir, conf["file.odpu_address"]),
@@ -108,11 +111,11 @@ class RegionDir:
         logging.info("Initialazing %s region data done", base_dir)
         self.results = ResultFile(self.base_dir, self.conf)
 
-    def process_osv(self) -> None:
-        "Process OSV file currently set as self.osv_file"
+    def _get_column_indexes(self) -> ColumnIndex:
+        "Calculates indexes of columns in the table"
         try:
             header_row = int(self.conf["osv.header_row"])
-            row_index = RowIndex(
+            column_index = ColumnIndex(
                 ExcelHelpers.get_col_by_name(self.osv_file.sheet, "Адрес", header_row)
                 - 1,
                 ExcelHelpers.get_col_by_name(
@@ -131,216 +134,264 @@ class RegionDir:
                 - 1,
                 ExcelHelpers.get_col_by_name(self.osv_file.sheet, "Всего", header_row)
                 - 1,
+                ExcelHelpers.get_col_by_name(
+                    self.osv_file.sheet,
+                    "Тепловая энергия для подогрева воды (повышенный %)",
+                    header_row,
+                )
+                - 1,
             )
         except ValueError as err:
             logging.warning("Check column names: %s", err)
             raise
-        for row in self.osv_file.get_data_row():
-            address_cell = row[row_index.address]
-            try:
-                osv_address_rec = OsvAddressRecord.get_instance(address_cell)
-                logging.debug(
-                    "Address record %s understood as %s", row[0], osv_address_rec
-                )
-                if not ExcelHelpers.address_in_list(
-                    osv_address_rec.address,
-                    self.buildings.get_sheet_data_formatted(
-                        str(self.osv_file.date.year)
-                    ),
-                ):
-                    continue
-                osv_accural_rec = OsvAccuralRecord(
-                    float(row[row_index.heating]),
-                    float(row[row_index.gvs]),
-                    float(row[row_index.reaccurance]),
-                    float(row[row_index.total]),
-                )
-                logging.debug(
-                    "Accural record %s understood as %s", row[0], osv_accural_rec
-                )
-            except AttributeError as err:
-                logging.warning("%s. Malformed record: %s", err, row)
-                continue
-            try:
-                if config["DEFAULT"]["account"] != osv_address_rec.account:
-                    continue
-            except KeyError:
-                pass
-            # region heating
-            if not (
-                osv_accural_rec.heating
-                or osv_accural_rec.reaccural
-                or osv_accural_rec.payment
+        return column_index
+
+    def _init_current_osv_row(self, row, column_index_data) -> OsvRecord | None:
+        "Parses OSV row and returns OvsRecord instance"
+        address_cell = row[column_index_data.address]
+        try:
+            osv_address_rec = OsvAddressRecord.get_instance(address_cell)
+            logging.debug("Address record %s understood as %s", row[0], osv_address_rec)
+            if not ExcelHelpers.address_in_list(
+                osv_address_rec.address,
+                self.buildings.get_sheet_data_formatted(str(self.osv_file.date.year)),
             ):
-                continue
-            account = osv_address_rec.account
-            account_details = AccountDetailsFileSingleton(
-                account,
-                os.path.join(
-                    self.base_dir,
-                    self.conf["account_details.dir"],
-                    f"{account}.xlsx",
-                ),
-                int(self.conf["account_details.header_row"]),
-                AccountDetailsRecord,
+                return None
+            osv_accural_rec = OsvAccuralRecord(
+                float(row[column_index_data.heating]),
+                float(row[column_index_data.gvs]),
+                float(row[column_index_data.reaccurance]),
+                float(row[column_index_data.total]),
+                float(row[column_index_data.gvs_elevated_percent]),
             )
-            try:
-                heating_row = HeatingResultRow(
-                    self.osv_file.date,
-                    osv_address_rec,
-                    osv_accural_rec,
-                    self.odpus,
-                    self.heating_average,
-                    account_details,
-                )
-                self.results.add_row(heating_row)
-            except NoServiceRow:
+            logging.debug("Accural record %s understood as %s", row[0], osv_accural_rec)
+        except AttributeError as err:
+            logging.warning("%s. Malformed record: %s", err, row)
+            return None
+        return OsvRecord(osv_address_rec, osv_accural_rec)
+
+    def _is_debugging_current_account(self):
+        "Checks of single account debugging is enabled in config file"
+        try:
+            if config["DEFAULT"]["account"] == self.osv.address_record.account:
+                return True
+        except KeyError:
+            return True
+        return False
+
+    def _process_heating_data(self):
+        if not (
+            self.osv.accural_record.heating
+            or self.osv.accural_record.reaccural
+            or self.osv.accural_record.payment
+        ):
+            return
+        try:
+            heating_row = HeatingResultRow(
+                self.osv_file.date,
+                self.osv.address_record,
+                self.osv.accural_record,
+                self.odpus,
+                self.heating_average,
+                self.account_details,
+            )
+            self.results.add_row(heating_row)
+        except NoServiceRow:
+            pass
+
+    def _process_gvs_data(self):
+        if not (
+            self.osv.accural_record.gvs
+            or self.osv.accural_record.reaccural
+            or self.osv.accural_record.payment
+        ):
+            return
+        gvs_details = GvsDetailsFileSingleton(
+            os.path.join(
+                self.base_dir,
+                self.conf["gvs.dir"],
+                f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+            ),
+            int(self.conf["gvs_details.header_row"]),
+            GvsDetailsRecord,
+            lambda x: x.account,
+        )
+        gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
+            ("account",), (self.osv.address_record.account,)
+        )
+        if len(gvs_details_rows) > 2:
+            gvs_details_rows = [gvs_details_rows[0], gvs_details_rows[-1]]
+            logging.warning(
+                "Too many GVS details records for account %s in %s, skipped",
+                gvs_details_rows[0].account,
+                self.osv_file.date,
+            )
+        match len(gvs_details_rows):
+            case 0:
                 pass
-            # endregion
-            # region gsv
-            if not (
-                osv_accural_rec.gvs
-                or osv_accural_rec.reaccural
-                or osv_accural_rec.payment
-            ):
-                continue
-            gvs_details = GvsDetailsFileSingleton(
+            case 1:
+                gvs_row = GvsSingleResultRow(
+                    self.osv_file.date,
+                    self.osv.address_record,
+                    self.osv.accural_record,
+                    self.account_details,
+                    gvs_details_rows[0],
+                )
+                self.results.add_row(gvs_row)
+            case 2:
+                for num, gvs_details_row in enumerate(gvs_details_rows):
+                    if not num:
+                        gvs_row = GvsMultipleResultFirstRow(
+                            self.osv_file.date,
+                            self.osv.address_record,
+                            self.osv.accural_record,
+                            self.account_details,
+                            gvs_details_row,
+                        )
+                    else:
+                        gvs_row = GvsMultipleResultSecondRow(
+                            self.osv_file.date,
+                            self.osv.address_record,
+                            self.osv.accural_record,
+                            self.account_details,
+                            gvs_details_row,
+                        )
+                    self.results.add_row(gvs_row)
+
+    def _process_gvs_reaccural_data(self):
+        gvs_details = GvsDetailsFileSingleton(
+            os.path.join(
+                self.base_dir,
+                self.conf["gvs.dir"],
+                f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+            ),
+            int(self.conf["gvs_details.header_row"]),
+            GvsDetailsRecord,
+            lambda x: x.account,
+        )
+        gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
+            ("account",), (self.osv.address_record.account,)
+        )
+        try:
+            gvs_details_row: GvsDetailsRecord = gvs_details_rows[0]
+        except IndexError:
+            gvs_details_row: GvsDetailsRecord = GvsDetailsRecord.get_dummy_instance()
+        try:
+            reaccural_sum = self.account_details.get_service_month_reaccural(
+                self.osv_file.date, "Тепловая энергия для подогрева воды"
+            )
+            if not reaccural_sum:
+                return
+            reaccural_details = Reaccural(
+                self.account_details, self.osv_file.date, reaccural_sum
+            )
+            # get type of Reaccural based on the data of a previous GVS file:
+            prev_date = self.osv_file.date.previous
+            prev_gvs_details = GvsDetailsFileSingleton(
                 os.path.join(
                     self.base_dir,
                     self.conf["gvs.dir"],
-                    f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+                    f"{prev_date.month:02d}.{prev_date.year}.xlsx",
                 ),
                 int(self.conf["gvs_details.header_row"]),
                 GvsDetailsRecord,
                 lambda x: x.account,
             )
-            gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
-                ("account",), (osv_address_rec.account,)
+            prev_gvs_details_rows: list[
+                GvsDetailsRecord
+            ] = prev_gvs_details.as_filtered_list(
+                ("account",), (self.osv.address_record.account,)
             )
-            if len(gvs_details_rows) > 2:
-                gvs_details_rows = [gvs_details_rows[0], gvs_details_rows[-1]]
-                logging.warning(
-                    "Too many GVS details records for account %s in %s, skipped",
-                    gvs_details_rows[0].account,
-                    self.osv_file.date,
-                )
-            match len(gvs_details_rows):
-                case 0:
-                    pass
-                case 1:
-                    gvs_row = GvsSingleResultRow(
-                        self.osv_file.date,
-                        osv_address_rec,
-                        osv_accural_rec,
-                        account_details,
-                        gvs_details_rows[0],
-                    )
-                    self.results.add_row(gvs_row)
-                case 2:
-                    for num, gvs_details_row in enumerate(gvs_details_rows):
-                        if not num:
-                            gvs_row = GvsMultipleResultFirstRow(
-                                self.osv_file.date,
-                                osv_address_rec,
-                                osv_accural_rec,
-                                account_details,
-                                gvs_details_row,
-                            )
-                        else:
-                            gvs_row = GvsMultipleResultSecondRow(
-                                self.osv_file.date,
-                                osv_address_rec,
-                                osv_accural_rec,
-                                account_details,
-                                gvs_details_row,
-                            )
-                        self.results.add_row(gvs_row)
-            # endregion
-            # region reaccural
             try:
-                gvs_details_row: GvsDetailsRecord = gvs_details_rows[0]
-            except IndexError:
-                gvs_details_row: GvsDetailsRecord = (
-                    GvsDetailsRecord.get_dummy_instance()
-                )
-            try:
-                reaccural_sum = account_details.get_service_month_reaccural(
-                    self.osv_file.date, "Тепловая энергия для подогрева воды"
-                )
-                if not reaccural_sum:
-                    continue
-                reaccural_details = Reaccural(
-                    account_details, self.osv_file.date, reaccural_sum
-                )
-                # get type of Reaccural based on the data of a previous GVS file:
-                prev_date = self.osv_file.date.previous
-                prev_gvs_details = GvsDetailsFileSingleton(
-                    os.path.join(
-                        self.base_dir,
-                        self.conf["gvs.dir"],
-                        f"{prev_date.month:02d}.{prev_date.year}.xlsx",
-                    ),
-                    int(self.conf["gvs_details.header_row"]),
-                    GvsDetailsRecord,
-                    lambda x: x.account,
-                )
-                prev_gvs_details_rows: list[
-                    GvsDetailsRecord
-                ] = prev_gvs_details.as_filtered_list(
-                    ("account",), (osv_address_rec.account,)
-                )
-                try:
-                    row: GvsDetailsRecord = prev_gvs_details_rows[0]
-                    if row.consumption_average:
-                        reaccural_details.set_type(ReaccuralType.AVERAGE)
-                    elif row.consumption_ipu:
-                        reaccural_details.set_type(ReaccuralType.IPU)
-                    else:
-                        reaccural_details.set_type(ReaccuralType.NORMATIVE)
-                except IndexError:
+                row: GvsDetailsRecord = prev_gvs_details_rows[0]
+                if row.consumption_average:
+                    reaccural_details.set_type(ReaccuralType.AVERAGE)
+                elif row.consumption_ipu:
+                    reaccural_details.set_type(ReaccuralType.IPU)
+                else:
                     reaccural_details.set_type(ReaccuralType.NORMATIVE)
-                for rec in reaccural_details.records:
-                    gvs_reaccural_row = GvsReaccuralResultRow(
-                        self.osv_file.date,
-                        osv_address_rec,
-                        gvs_details_row,
-                        rec.date,
-                        rec.sum,
-                        reaccural_details.type,
+            except IndexError:
+                reaccural_details.set_type(ReaccuralType.NORMATIVE)
+            for rec in reaccural_details.records:
+                gvs_reaccural_row = GvsReaccuralResultRow(
+                    self.osv_file.date,
+                    self.osv.address_record,
+                    gvs_details_row,
+                    rec.date,
+                    rec.sum,
+                    reaccural_details.type,
+                )
+                if not reaccural_details.valid:
+                    gvs_reaccural_row.set_field(
+                        38, "Не удалось разложить начисление на месяцы"
                     )
-                    if not reaccural_details.valid:
-                        gvs_reaccural_row.set_field(
-                            38, "Не удалось разложить начисление на месяцы"
-                        )
-                    self.results.add_row(gvs_reaccural_row)
-                self.reaccural_counter.update([reaccural_details.valid])
-            except NoServiceRow:
-                pass
-            # endregion
-        logging.info("Total valid/invalid reaacurals: %s", self.reaccural_counter)
+                self.results.add_row(gvs_reaccural_row)
+            self.reaccural_counter.update([reaccural_details.valid])
+        except NoServiceRow:
+            pass
+
+    def _process_osv(self, osv_file_name) -> None:
+        "Process OSV file currently set as self.osv_file"
+        self.osv_file = OsvFile(osv_file_name, self.conf)
+        column_index_data = self._get_column_indexes()
+        for row in self.osv_file.get_data_row():
+            self.osv = self._init_current_osv_row(row, column_index_data)
+            if not self.osv:
+                continue
+            if not self._is_debugging_current_account:
+                continue
+            self.account = self.osv.address_record.account
+            self.account_details = AccountDetailsFileSingleton(
+                self.account,
+                os.path.join(
+                    self.base_dir,
+                    self.conf["account_details.dir"],
+                    f"{self.osv.address_record.account}.xlsx",
+                ),
+                int(self.conf["account_details.header_row"]),
+                AccountDetailsRecord,
+            )
+            self._process_heating_data()
+            self._process_gvs_data()
+            self._process_gvs_reaccural_data()
+        logging.info("Total valid/invalid reacurals: %s", self.reaccural_counter)
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
-        for file in self.osv_files:
+        for file_name in self.osv_files:
             try:
-                self.osv_file = OsvFile(file, self.conf)
-                self.process_osv()
+                self._process_osv(file_name)
             except Exception as err:  # pylint: disable=W0718
                 logging.critical("General exception: %s.", err.args)
-                self.close()
                 raise
-            else:
-                self.osv_file.workbook.close()
+            finally:
+                self.close()
 
     def close(self):
-        "Closes all opened descriptors"
+        "Closes all file descriptors that might be still open"
+        try:
+            self.account_details.close()
+        except AttributeError:
+            pass
+        try:
+            self.buildings.close()
+        except AttributeError:
+            pass
+        try:
+            self.heating_average.close()
+        except AttributeError:
+            pass
         try:
             self.odpus.close()
-            self.heating_average.close()
-            self.buildings.close()
-            self.results.close()
+        except AttributeError:
+            pass
+        try:
             self.osv_file.close()
-        except (NameError, AttributeError):
+        except AttributeError:
+            pass
+        try:
+            self.results.close()
+        except AttributeError:
             pass
 
 
@@ -358,58 +409,14 @@ if __name__ == "__main__":
             )
             region.read_osvs()
             region.results.save()
-            region.results.close()
         finally:
-            try:
-                region.close()
-            except NameError:
-                pass
-        logging.info("Reading GVS IPU data from results table...")
-        filename = config["DEFAULT"]["result_file"].split("@", 1)[0]
-        gvsipus = FilledResultTable(
-            os.path.join(config["DEFAULT"]["base_dir"], section, filename),
-            3,
-            FilledResultRecord,
-            filter_func=lambda s: s.type == ResultRecordType.GVS_ACCURAL.name,
-            max_col=22,
-        )
-        logging.info("Reading GVS IPU data from results table done")
-        logging.info("Looking for IPU replacement...")
-        active_sheet = gvsipus.workbook.active
-        gvs_accounts = gvsipus.get_field_values("account")
-        TOTAL_IPU_REPLACEMENTS = 0
-        for gvs_account in gvs_accounts:
-            counters: list[GvsIpuMetric] = gvsipus.as_filtered_list(
-                ("account",), (gvs_account,)
+            region.close()
+        gvs_ipu_change = IpuReplacementFinder(
+            os.path.join(
+                config["DEFAULT"]["base_dir"],
+                section,
+                config["DEFAULT"]["result_file"].split("@", 1)[0],
             )
-            IGNORE_NEXT = False
-            for i, current_el in enumerate(counters[:-1]):
-                next_el = counters[i + 1]
-                if IGNORE_NEXT:
-                    IGNORE_NEXT = False
-                    continue
-                if current_el.date == next_el.date:
-                    IGNORE_NEXT = True
-                    continue
-                if current_el.counter_number != next_el.counter_number:
-                    row_num = current_el.row
-                    type_cell = active_sheet[f"U{row_num}"]
-                    type_cell.value = "При снятии прибора"
-                    row_num = next_el.row
-                    type_cell = active_sheet[f"U{row_num}"]
-                    type_cell.value = "При установке"
-                    GvsIpuInstallDates[gvs_account] = next_el.metric_date
-                    logging.debug(current_el)
-                    logging.debug(next_el)
-                    TOTAL_IPU_REPLACEMENTS += 1
-                if gvs_account in GvsIpuInstallDates:
-                    row_num = next_el.row
-                    date_cell = active_sheet[f"K{row_num}"]
-                    date_cell.value = GvsIpuInstallDates[gvs_account]
-        logging.info(
-            "Total additional IPU replacements found: %s", TOTAL_IPU_REPLACEMENTS
         )
-        logging.info("Saving results...")
-        gvsipus.save()
-        gvsipus.close()
-        logging.info("Saving results done")
+        gvs_ipu_change.find_replacements()
+        gvs_ipu_change.save()

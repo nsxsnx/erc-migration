@@ -1,9 +1,9 @@
 "Table to store results"
 
-from enum import Enum
 import logging
 import os
 import shutil
+from enum import Enum
 from typing import Any
 
 from openpyxl import load_workbook
