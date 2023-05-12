@@ -107,7 +107,7 @@ class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
                 return result[0]
             case _:
                 raise ValueError(
-                    "More than one payment row found for {service} on {date} in {self.filename}"
+                    "More than one details row found for {service} on {date} in {self.filename}"
                 )
 
     def get_service_month_payment(self, date: MonthYear, service: str) -> float:
