@@ -18,3 +18,9 @@ class ZeroServiceReacuralRow(Exception):
     """
     Raised when reaccural for a service is zero
     """
+
+
+class ZeroDataResultRow(Exception):
+    """
+    Raised when result row has only Zero values
+    """

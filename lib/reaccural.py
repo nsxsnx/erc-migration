@@ -3,9 +3,14 @@
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum, auto
+import os
 
 from lib.datatypes import MonthYear
-from lib.detailsfile import AccountDetailsFileSingleton
+from lib.detailsfile import (
+    AccountDetailsFileSingleton,
+    GvsDetailsFileSingleton,
+    GvsDetailsRecord,
+)
 from lib.exceptions import NoServiceRow
 
 MAX_DEPTH = 36
@@ -44,7 +49,7 @@ class Reaccural:
             try:
                 prev_accural = Decimal(
                     self.account_data.get_service_month_accural(
-                        date := date.previous, "Тепловая энергия для подогрева воды"
+                        date := date.previous, self.serivce
                     )
                 ).quantize(Decimal("0.01"))
             except NoServiceRow:
@@ -69,12 +74,12 @@ class Reaccural:
             try:
                 prev_accural = Decimal(
                     self.account_data.get_service_month_accural(
-                        date := date.previous, "Тепловая энергия для подогрева воды"
+                        date := date.previous, self.serivce
                     )
                 ).quantize(Decimal("0.01"))
                 second_prev_accural = Decimal(
                     self.account_data.get_service_month_accural(
-                        date.previous, "Тепловая энергия для подогрева воды"
+                        date.previous, self.serivce
                     )
                 ).quantize(Decimal("0.01"))
             except NoServiceRow:
@@ -91,11 +96,37 @@ class Reaccural:
         "Reaccural type setter"
         self.type = p_type
 
+    def init_type(self, gvs_dir: str, header_row: int):
+        "get type of Reaccural based on the data of a previous GVS file"
+        prev_date = self.date.previous
+        gvs_details = GvsDetailsFileSingleton(
+            os.path.join(
+                gvs_dir,
+                f"{prev_date.month:02d}.{prev_date.year}.xlsx",
+            ),
+            header_row,
+            GvsDetailsRecord,
+            lambda x: x.account,
+        )
+        gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
+            ("account",), (self.account_data.account)
+        )
+        self.set_type(ReaccuralType.NORMATIVE)
+        try:
+            row: GvsDetailsRecord = gvs_details_rows[0]
+            if row.consumption_average:
+                self.set_type(ReaccuralType.AVERAGE)
+            elif row.consumption_ipu:
+                self.set_type(ReaccuralType.IPU)
+        except IndexError:
+            pass
+
     def __init__(
         self,
         account_details: AccountDetailsFileSingleton,
         reaccural_date: MonthYear,
         reaccural_sum: float,
+        service: str,
     ) -> None:
         self.date = reaccural_date
         self.totalsum = Decimal(reaccural_sum).quantize(Decimal("0.01"))
@@ -103,13 +134,14 @@ class Reaccural:
         self.records = []
         self.account_data = account_details
         self.type = None
+        self.serivce = service
         self.try_decompose_to_zero()
         if self.valid:
             return
         try:
             next_month_accural = Decimal(
                 self.account_data.get_service_month_accural(
-                    self.date.next, "Тепловая энергия для подогрева воды"
+                    self.date.next, self.serivce
                 )
             )
             if not next_month_accural:

@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 from lib.addressfile import AddressFile
 from lib.datatypes import MonthYear
 from lib.detailsfile import AccountDetailsFileSingleton, GvsDetailsRecord
-from lib.exceptions import NoServiceRow
+from lib.exceptions import NoServiceRow, ZeroDataResultRow
 from lib.helpers import BaseWorkBook, ExcelHelpers
 from lib.osvfile import OsvAccuralRecord, OsvAddressRecord
 from lib.reaccural import ReaccuralType
@@ -26,6 +26,7 @@ class ResultRecordType(Enum):
     HEATING_REACCURAL = 2
     GVS_ACCURAL = 3
     GVS_REACCURAL = 4
+    GVS_ELEVATED = 5
 
 
 class BaseResultRow:
@@ -145,10 +146,11 @@ class GvsSingleResultRow(BaseResultRow):
         accural: OsvAccuralRecord,
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
+        service: str | None = "Тепловая энергия для подогрева воды",
     ) -> None:
         super().__init__(date, data)
         self.set_field(4, ResultRecordType.GVS_ACCURAL.name)
-        self.set_field(5, "Тепловая энергия ГВС")
+        self.set_field(5, service)
         # chapter 3:
         gvs = gvs_details_row
         if gvs.counter_id or gvs.counter_number:
@@ -189,9 +191,7 @@ class GvsSingleResultRow(BaseResultRow):
         self.set_field(37, accural.gvs)
         # chapter 9:
         try:
-            payment_sum = account_details.get_service_month_payment(
-                date, "Тепловая энергия для подогрева воды"
-            )
+            payment_sum = account_details.get_service_month_payment(date, service)
         except NoServiceRow:
             payment_sum = 0
         if payment_sum != 0:
@@ -202,7 +202,7 @@ class GvsSingleResultRow(BaseResultRow):
         # chapter 10:
         try:
             closing_balance = account_details.get_service_month_closing_balance(
-                date, "Тепловая энергия для подогрева воды"
+                date, service
             )
         except NoServiceRow:
             closing_balance = 0
@@ -264,10 +264,11 @@ class GvsReaccuralResultRow(BaseResultRow):
         reaccural_date: MonthYear,
         reaccural_sum: float,
         reaccural_type: ReaccuralType,
+        service,
     ) -> None:
         super().__init__(date, data)
         self.set_field(4, ResultRecordType.GVS_REACCURAL.name)
-        self.set_field(5, "Тепловая энергия ГВС")
+        self.set_field(5, service)
         # chapter 2:
         self.set_field(6, reaccural_date.month)
         self.set_field(7, reaccural_date.year)
@@ -306,6 +307,63 @@ class GvsReaccuralResultRow(BaseResultRow):
         self.set_field(35, quantity)
         self.set_field(36, reaccural_sum)
         self.set_field(37, reaccural_sum)
+
+
+class GvsElevatedResultRow(GvsSingleResultRow):
+    "Result row for GVS elevated percent accural"
+
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        accural: OsvAccuralRecord,
+        account_details: AccountDetailsFileSingleton,
+        gvs_details_row: GvsDetailsRecord,
+        service: str,
+    ) -> None:
+        super().__init__(date, data, accural, account_details, gvs_details_row, service)
+        self.set_field(4, ResultRecordType.GVS_ELEVATED.name)
+        self.set_field(5, service)
+        # chapter 3:
+        gvs = gvs_details_row
+        # chapter 4:
+        self.set_field(19, None)
+        self.set_field(20, None)
+        self.set_field(21, None)
+        self.set_field(22, None)
+        # chapter 5:
+        try:
+            accural_sum = account_details.get_service_month_accural(date, service)
+        except NoServiceRow:
+            accural_sum = 0
+        quantity = f"{accural_sum/self.price:.4f}"
+        if gvs.consumption_ipu:
+            self.set_field(23, quantity)
+            self.set_field(24, accural_sum)
+            self.set_field(25, accural_sum)
+        # chapter 6:
+        if gvs.consumption_average:
+            self.set_field(26, quantity)
+            self.set_field(27, accural_sum)
+            self.set_field(28, accural_sum)
+        # chapter 7:
+        if gvs.consumption_normative:
+            self.set_field(30, gvs.people_registered)
+            self.set_field(31, quantity)
+            self.set_field(32, accural_sum)
+            self.set_field(33, accural_sum)
+        # chapter 8:
+        self.set_field(35, quantity)
+        self.set_field(36, accural_sum)
+        self.set_field(37, accural_sum)
+        if not any(
+            (
+                accural_sum,
+                self.get_field(42),  # payment_sum
+                self.get_field(45),  # closing_balance
+            )
+        ):
+            raise ZeroDataResultRow
 
 
 class ResultFile(BaseWorkBook):

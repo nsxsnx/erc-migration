@@ -15,7 +15,7 @@ from lib.detailsfile import (
     GvsDetailsFileSingleton,
     GvsDetailsRecord,
 )
-from lib.exceptions import NoServiceRow
+from lib.exceptions import NoServiceRow, ZeroDataResultRow
 from lib.gvsipuchange import IpuReplacementFinder
 from lib.helpers import ExcelHelpers
 from lib.osvfile import (
@@ -28,6 +28,7 @@ from lib.osvfile import (
 )
 from lib.reaccural import Reaccural, ReaccuralType
 from lib.resultfile import (
+    GvsElevatedResultRow,
     GvsMultipleResultFirstRow,
     GvsMultipleResultSecondRow,
     GvsReaccuralResultRow,
@@ -258,7 +259,16 @@ class RegionDir:
                         )
                     self.results.add_row(gvs_row)
 
-    def _process_gvs_reaccural_data(self):
+    def _process_gvs_reaccural_data(self, service: str):
+        try:
+            reaccural_sum = self.account_details.get_service_month_reaccural(
+                self.osv_file.date,
+                service,
+            )
+        except NoServiceRow:
+            return
+        if not reaccural_sum:
+            return
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -276,58 +286,58 @@ class RegionDir:
             gvs_details_row: GvsDetailsRecord = gvs_details_rows[0]
         except IndexError:
             gvs_details_row: GvsDetailsRecord = GvsDetailsRecord.get_dummy_instance()
-        try:
-            reaccural_sum = self.account_details.get_service_month_reaccural(
-                self.osv_file.date, "Тепловая энергия для подогрева воды"
+        reaccural_details = Reaccural(
+            self.account_details, self.osv_file.date, reaccural_sum, service
+        )
+        reaccural_details.init_type(
+            os.path.join(self.base_dir, self.conf["gvs.dir"]),
+            int(self.conf["gvs_details.header_row"]),
+        )
+        for rec in reaccural_details.records:
+            gvs_reaccural_row = GvsReaccuralResultRow(
+                self.osv_file.date,
+                self.osv.address_record,
+                gvs_details_row,
+                rec.date,
+                rec.sum,
+                reaccural_details.type,
+                service,
             )
-            if not reaccural_sum:
-                return
-            reaccural_details = Reaccural(
-                self.account_details, self.osv_file.date, reaccural_sum
-            )
-            # get type of Reaccural based on the data of a previous GVS file:
-            prev_date = self.osv_file.date.previous
-            prev_gvs_details = GvsDetailsFileSingleton(
-                os.path.join(
-                    self.base_dir,
-                    self.conf["gvs.dir"],
-                    f"{prev_date.month:02d}.{prev_date.year}.xlsx",
-                ),
-                int(self.conf["gvs_details.header_row"]),
-                GvsDetailsRecord,
-                lambda x: x.account,
-            )
-            prev_gvs_details_rows: list[
-                GvsDetailsRecord
-            ] = prev_gvs_details.as_filtered_list(
-                ("account",), (self.osv.address_record.account,)
-            )
-            try:
-                row: GvsDetailsRecord = prev_gvs_details_rows[0]
-                if row.consumption_average:
-                    reaccural_details.set_type(ReaccuralType.AVERAGE)
-                elif row.consumption_ipu:
-                    reaccural_details.set_type(ReaccuralType.IPU)
-                else:
-                    reaccural_details.set_type(ReaccuralType.NORMATIVE)
-            except IndexError:
-                reaccural_details.set_type(ReaccuralType.NORMATIVE)
-            for rec in reaccural_details.records:
-                gvs_reaccural_row = GvsReaccuralResultRow(
-                    self.osv_file.date,
-                    self.osv.address_record,
-                    gvs_details_row,
-                    rec.date,
-                    rec.sum,
-                    reaccural_details.type,
+            if not reaccural_details.valid:
+                gvs_reaccural_row.set_field(
+                    38, "Не удалось разложить начисление на месяцы"
                 )
-                if not reaccural_details.valid:
-                    gvs_reaccural_row.set_field(
-                        38, "Не удалось разложить начисление на месяцы"
-                    )
-                self.results.add_row(gvs_reaccural_row)
-            self.reaccural_counter.update([reaccural_details.valid])
-        except NoServiceRow:
+            self.results.add_row(gvs_reaccural_row)
+        self.reaccural_counter.update([reaccural_details.valid])
+
+    def _process_gvs_elevated_data(self):
+        service = "Тепловая энергия для подогрева воды (повышенный %)"
+        gvs_details = GvsDetailsFileSingleton(
+            os.path.join(
+                self.base_dir,
+                self.conf["gvs.dir"],
+                f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+            ),
+            int(self.conf["gvs_details.header_row"]),
+            GvsDetailsRecord,
+            lambda x: x.account,
+        )
+        gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
+            ("account",), (self.osv.address_record.account,)
+        )
+        if not gvs_details_rows:
+            return
+        try:
+            row = GvsElevatedResultRow(
+                self.osv_file.date,
+                self.osv.address_record,
+                self.osv.accural_record,
+                self.account_details,
+                gvs_details_rows[0],
+                service,
+            )
+            self.results.add_row(row)
+        except (NoServiceRow, ZeroDataResultRow):
             pass
 
     def _process_osv(self, osv_file_name) -> None:
@@ -353,8 +363,12 @@ class RegionDir:
             )
             self._process_heating_data()
             self._process_gvs_data()
-            self._process_gvs_reaccural_data()
-        logging.info("Total valid/invalid reacurals: %s", self.reaccural_counter)
+            self._process_gvs_reaccural_data("Тепловая энергия для подогрева воды")
+            self._process_gvs_elevated_data()
+            self._process_gvs_reaccural_data(
+                "Тепловая энергия для подогрева воды (повышенный %)"
+            )
+        # logging.info("Total valid/invalid reacurals: %s", self.reaccural_counter)
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
@@ -368,7 +382,7 @@ class RegionDir:
                 self.close()
 
     def close(self):
-        "Closes all file descriptors that might be still open"
+        "Closes all file descriptors that might still be open"
         try:
             self.account_details.close()
         except AttributeError:
