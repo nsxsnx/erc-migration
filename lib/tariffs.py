@@ -7,10 +7,10 @@ from lib.datatypes import MonthYear
 class HeatingTariff(float, Enum):
     """Heating prices for different periods"""
 
-    T2020_1 = 3_217.63
-    T2020_2 = 3_217.63
+    T2020_1 = 3_276.63
+    T2020_2 = 3_276.63
     T2021_1 = 3_276.63
-    T2021_2 = 3_300
+    T2021_2 = 3_300.00
     T2022_1 = 3_457.63
     T2022_2 = 3_589.02
 

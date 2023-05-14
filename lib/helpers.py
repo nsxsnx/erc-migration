@@ -37,7 +37,7 @@ class ExcelHelpers:
         return row[col_number]
 
     @classmethod
-    def address_in_list(cls, full_addr: str, addr_list: list[str]) -> bool:
+    def is_address_in_list(cls, full_addr: str, addr_list: list[str]) -> bool:
         "Returns True if full_addr:str includes at least one of addr_list"
         for addr in addr_list:
             if addr + "," in full_addr.lower() or addr + " " in full_addr.lower():
@@ -46,7 +46,7 @@ class ExcelHelpers:
 
 
 def timeit(func):
-    "Mesaruses and prints function execution time"
+    "Decorator that mesaruses and prints function execution time"
 
     @wraps(func)
     def timeit_wrapper(*args, **kwargs):
@@ -90,7 +90,7 @@ class BaseWorkBookData(BaseWorkBook):
             f"Field {field} with value {value} not found in file {self.filename}"
         )
 
-    def as_filtered_list(self, fields: Iterable, values: Iterable):
+    def as_filtered_list(self, fields: Iterable, values: Iterable) -> list[Any]:
         "Returns list of rows filtered by all values of a given pair of iterables"
 
         def _check_fields(record, fields, values):
@@ -127,6 +127,78 @@ class BaseWorkBookData(BaseWorkBook):
                 if callable(filter_func) and not filter_func(record):
                     continue
                 self.records.append(record)
+        finally:
+            try:
+                self.close()
+            except AttributeError:
+                pass
+
+
+class BaseMultisheetWorkBookData(BaseWorkBook):
+    "Base class representing multiple data sheets read from workbook"
+
+    def get_sheets_count(self) -> int:
+        "Returns total number of sheets read from file"
+        return len(self.sheets)
+
+    def get_strings_count(self) -> int:
+        "Returns total number of data strings of all sheets read from file"
+        return sum([len(s) for _, s in self.sheets.items()])
+
+    def get_row_by_field_value(self, field: str, value: str, sheet_name: str) -> Any:
+        "Finds in a given list and returns first row where field == value"
+        for record in self.sheets[sheet_name]:
+            if getattr(record, field) == value:
+                return record
+        raise ValueError(
+            f"Field {field} with value {value} not found in a sheet {sheet_name} "
+            "of a file {self.filename}"
+        )
+
+    def get_account_row(self, account: str, sheet_name: str) -> Any:
+        "Finds on a given sheet and returns a row with given value of .account attribute"
+        return self.get_row_by_field_value("account", account, sheet_name)
+
+    def as_filtered_list(
+        self, fields: Iterable, values: Iterable, sheet_name: str
+    ) -> list[Any]:
+        "Returns list of rows filtered by all values of a given pair of iterables"
+
+        def _check_fields(record, fields, values):
+            for field, value in zip(fields, values):
+                if getattr(record, field) != value:
+                    return False
+            return True
+
+        return list(
+            filter(
+                lambda record: _check_fields(record, fields, values),
+                self.sheets[sheet_name],
+            )
+        )
+
+    def __init__(
+        self,
+        filename: str,
+        header_row: int,
+        record_class: Type,
+        filter_func: Callable[[Any], bool] | None = None,
+        max_col: int | None = None,
+    ) -> None:
+        self.filename = filename
+        self.sheets: dict[str, list[record_class]] = dict()
+        try:
+            self.workbook = load_workbook(filename=filename, data_only=True)
+            for sheet in self.workbook:
+                records = []
+                for row in sheet.iter_rows(
+                    min_row=header_row + 1, max_col=max_col, values_only=True
+                ):
+                    record: record_class = record_class(*row)
+                    if callable(filter_func) and not filter_func(record):
+                        continue
+                    records.append(record)
+                self.sheets[sheet.title] = records
         finally:
             try:
                 self.close()

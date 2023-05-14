@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Self
+import calendar
 
 
 @dataclass(frozen=True)
@@ -28,3 +29,7 @@ class MonthYear:
             return MonthYear(self.month + 1, self.year)
         else:
             return MonthYear(1, self.year + 1)
+
+    @property
+    def month_abbr(self) -> str:
+        return calendar.month_abbr[self.month].lower()

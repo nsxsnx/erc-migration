@@ -25,8 +25,10 @@ class ResultRecordType(Enum):
     HEATING_ACCURAL = 1
     HEATING_REACCURAL = 2
     GVS_ACCURAL = 3
+    GVS_ELEVATED = 4
     GVS_REACCURAL = 4
-    GVS_ELEVATED = 5
+    GVS_REACCURAL_ELEVATED = 5
+    HEATING_CORRECTION_NEGATIVE = 6
 
 
 class BaseResultRow:
@@ -82,7 +84,7 @@ class HeatingResultRow(BaseResultRow):
         self.set_field(5, "Отопление")
         # chapter 2:
         odpus = odpu_file.get_sheet_data_formatted(str(date.year))
-        has_odpu: bool = ExcelHelpers.address_in_list(data.address, odpus)
+        has_odpu: bool = ExcelHelpers.is_address_in_list(data.address, odpus)
         if has_odpu:
             self.set_field(9, "Общедомовый")
             self.set_field(10, "01.01.2018")
@@ -97,7 +99,7 @@ class HeatingResultRow(BaseResultRow):
         # 'data_formatted' is used here instead of 'data_raw', because
         # value of heating average is not required in result table,
         # we only need address of the building to know that heating average was calculated
-        has_heating_average: bool = ExcelHelpers.address_in_list(
+        has_heating_average: bool = ExcelHelpers.is_address_in_list(
             data.address, heating_averages
         )
         # price = HeatingTariff.get_tariff(date)
@@ -265,9 +267,10 @@ class GvsReaccuralResultRow(BaseResultRow):
         reaccural_sum: float,
         reaccural_type: ReaccuralType,
         service,
+        record_type,
     ) -> None:
         super().__init__(date, data)
-        self.set_field(4, ResultRecordType.GVS_REACCURAL.name)
+        self.set_field(4, record_type.name)
         self.set_field(5, service)
         # chapter 2:
         self.set_field(6, reaccural_date.month)
@@ -364,6 +367,43 @@ class GvsElevatedResultRow(GvsSingleResultRow):
             )
         ):
             raise ZeroDataResultRow
+
+
+class HeatingLastYearNegativeCorrection(BaseResultRow):
+    "Result row for heating last-year negative correction"
+
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        correction_date: MonthYear,
+        correction_sum: float,
+        correction_volume: float,
+        odpu_volume: float,
+    ) -> None:
+        super().__init__(date, data)
+        self.set_field(4, ResultRecordType.HEATING_CORRECTION_NEGATIVE.name)
+        self.set_field(5, "Отопление")
+        self.set_field(6, correction_date.month)
+        self.set_field(7, correction_date.year)
+        self.price = HeatingTariff.get_tariff(correction_date)
+        self.set_field(8, self.price)
+        self.set_field(9, "Общедомовый")
+        self.set_field(10, "01.01.2018")
+        self.set_field(11, "Подвал")
+        self.set_field(12, 1)
+        self.set_field(13, "ВКТ-5")
+        self.set_field(14, 1)
+        self.set_field(15, 6)
+        self.set_field(16, 3)
+        self.set_field(19, f"23.{correction_date.month:02d}.{correction_date.year}")
+        self.set_field(20, "Контрольное")
+        self.set_field(22, odpu_volume)
+        accural_sum = correction_volume * self.price - correction_sum
+        self.set_field(24, accural_sum)
+        self.set_field(25, accural_sum)
+        self.set_field(36, accural_sum)
+        self.set_field(37, accural_sum)
 
 
 class ResultFile(BaseWorkBook):

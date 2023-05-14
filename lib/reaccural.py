@@ -13,7 +13,7 @@ from lib.detailsfile import (
 )
 from lib.exceptions import NoServiceRow
 
-MAX_DEPTH = 36
+MAX_DEPTH = 36  # Search that many previous months to decompose reaccural sum
 
 
 @dataclass

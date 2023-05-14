@@ -1,5 +1,7 @@
 " Energobilling data calculation/formatting "
+import calendar
 import configparser
+from decimal import Decimal
 import logging
 import os
 import re
@@ -9,6 +11,7 @@ from dataclasses import dataclass
 from os.path import basename
 
 from lib.addressfile import AddressFile
+from lib.datatypes import MonthYear
 from lib.detailsfile import (
     AccountDetailsFileSingleton,
     AccountDetailsRecord,
@@ -17,6 +20,12 @@ from lib.detailsfile import (
 )
 from lib.exceptions import NoServiceRow, ZeroDataResultRow
 from lib.gvsipuchange import IpuReplacementFinder
+from lib.heatingcorrections import (
+    HeatingCorrectionRecord,
+    HeatingCorrectionsFile,
+    HeatingVolumesOdpuFile,
+    HeatingVolumesOdpuRecord,
+)
 from lib.helpers import ExcelHelpers
 from lib.osvfile import (
     OSVDATA_REGEXP,
@@ -26,16 +35,19 @@ from lib.osvfile import (
     OsvRecord,
     osvdata_regexp_compiled,
 )
-from lib.reaccural import Reaccural, ReaccuralType
+from lib.reaccural import Reaccural
 from lib.resultfile import (
     GvsElevatedResultRow,
     GvsMultipleResultFirstRow,
     GvsMultipleResultSecondRow,
     GvsReaccuralResultRow,
     GvsSingleResultRow,
+    HeatingLastYearNegativeCorrection,
     HeatingResultRow,
     ResultFile,
+    ResultRecordType,
 )
+
 
 CONFIG_PATH = "./config.ini"
 
@@ -64,35 +76,57 @@ class RegionDir:
         self.osv: OsvRecord | None = None
         self.account: str | None = None
         self.account_details: AccountDetailsFileSingleton | None = None
-        logging.info("Reading ODPU addresses...")
+        self.heating_yearly_correction_dates = [
+            MonthYear(*[int(x) for x in reversed(date.split("-"))])
+            for date in self.conf["heating.yearly_corrections_dates"].split(",")
+        ]
         self.odpus = AddressFile(
             os.path.join(self.base_dir, conf["file.odpu_address"]),
             self.conf,
         )
         logging.info(
-            "Reading ODPU address data done, found %s sheets with total of %s elements",
+            "Read ODPU address data: %s sheets, %s elements total",
             self.odpus.get_sheets_count(),
             self.odpus.get_strings_count(),
         )
-        logging.info("Reading heating average...")
         self.heating_average = AddressFile(
             os.path.join(self.base_dir, conf["file.heating_average"]),
             self.conf,
         )
         logging.info(
-            "Reading heating average done, found %s sheets with total of %s elements",
+            "Read heating average: %s sheets, %s elements total",
             self.heating_average.get_sheets_count(),
             self.heating_average.get_strings_count(),
         )
-        logging.info("Reading buildings ...")
         self.buildings = AddressFile(
             os.path.join(self.base_dir, conf["file.building_address"]),
             self.conf,
         )
         logging.info(
-            "Reading buildings done, found %s sheets with total of %s elements",
+            "Read buildings: %s sheets, %s elements total",
             self.buildings.get_sheets_count(),
             self.buildings.get_strings_count(),
+        )
+        self.heating_corrections: HeatingCorrectionsFile = HeatingCorrectionsFile(
+            os.path.join(self.base_dir, self.conf["file.heating_corrections"]),
+            1,
+            HeatingCorrectionRecord,
+            filter_func=lambda x: x.account,
+        )
+        logging.info(
+            "Read heating corrections: %s sheets, %s elements total",
+            self.heating_corrections.get_sheets_count(),
+            self.heating_corrections.get_strings_count(),
+        )
+        self.heating_volumes_odpu: HeatingVolumesOdpuFile = HeatingVolumesOdpuFile(
+            os.path.join(self.base_dir, self.conf["file.heating_volumes_odpu"]),
+            1,
+            HeatingVolumesOdpuRecord,
+        )
+        logging.info(
+            "Read heating ODPU volumes: %s sheets, %s elements total",
+            self.heating_volumes_odpu.get_sheets_count(),
+            self.heating_volumes_odpu.get_strings_count(),
         )
         osv_files = [
             os.path.join(self.osv_path, f)
@@ -153,7 +187,7 @@ class RegionDir:
         try:
             osv_address_rec = OsvAddressRecord.get_instance(address_cell)
             logging.debug("Address record %s understood as %s", row[0], osv_address_rec)
-            if not ExcelHelpers.address_in_list(
+            if not ExcelHelpers.is_address_in_list(
                 osv_address_rec.address,
                 self.buildings.get_sheet_data_formatted(str(self.osv_file.date.year)),
             ):
@@ -181,10 +215,12 @@ class RegionDir:
         return False
 
     def _process_heating_data(self):
-        if not (
-            self.osv.accural_record.heating
-            or self.osv.accural_record.reaccural
-            or self.osv.accural_record.payment
+        if not any(
+            (
+                self.osv.accural_record.heating,
+                self.osv.accural_record.reaccural,
+                self.osv.accural_record.payment,
+            )
         ):
             return
         try:
@@ -201,10 +237,12 @@ class RegionDir:
             pass
 
     def _process_gvs_data(self):
-        if not (
-            self.osv.accural_record.gvs
-            or self.osv.accural_record.reaccural
-            or self.osv.accural_record.payment
+        if not any(
+            (
+                self.osv.accural_record.gvs,
+                self.osv.accural_record.reaccural,
+                self.osv.accural_record.payment,
+            )
         ):
             return
         gvs_details = GvsDetailsFileSingleton(
@@ -259,7 +297,14 @@ class RegionDir:
                         )
                     self.results.add_row(gvs_row)
 
-    def _process_gvs_reaccural_data(self, service: str):
+    def _process_gvs_reaccural_data(self, record_type: ResultRecordType):
+        match record_type:
+            case ResultRecordType.GVS_REACCURAL:
+                service = "Тепловая энергия для подогрева воды"
+            case ResultRecordType.GVS_REACCURAL_ELEVATED:
+                service = "Тепловая энергия для подогрева воды (повышенный %)"
+            case _:
+                raise ValueError("Unknown result record type")
         try:
             reaccural_sum = self.account_details.get_service_month_reaccural(
                 self.osv_file.date,
@@ -302,6 +347,7 @@ class RegionDir:
                 rec.sum,
                 reaccural_details.type,
                 service,
+                record_type,
             )
             if not reaccural_details.valid:
                 gvs_reaccural_row.set_field(
@@ -340,6 +386,72 @@ class RegionDir:
         except (NoServiceRow, ZeroDataResultRow):
             pass
 
+    def _process_last_year_negative_heating_correction(self):
+        service = "Отопление"
+
+        if self.osv_file.date not in self.heating_yearly_correction_dates:
+            return
+        try:
+            reaccural = self.account_details.get_service_month_reaccural(
+                self.osv_file.date, service
+            )
+        except NoServiceRow:
+            return
+        if not reaccural:
+            return
+        reaccural = Decimal(reaccural).quantize(Decimal("0.01"))
+        try:
+            correction_record: HeatingCorrectionRecord = (
+                self.heating_corrections.get_account_row(
+                    self.account,
+                    f"{self.osv_file.date.year-1}",
+                )
+            )
+        except ValueError:
+            return
+        if correction_record.year_correction >= 0:
+            return
+        if reaccural != correction_record.year_correction:
+            logging.warning(
+                "Could not determine last year heating correction for %s in %s. "
+                "Reaccural: %s; last year correction: %s",
+                self.account,
+                self.osv_file.date,
+                reaccural,
+                correction_record.year_correction,
+            )
+            return
+        for month_num, month_abbr in enumerate(
+            [m.lower() for m in calendar.month_abbr if m], start=1
+        ):
+            correction_sum = getattr(correction_record, month_abbr)
+            if not correction_sum:
+                continue
+            correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
+            correction_date = MonthYear(month_num, self.osv_file.date.year - 1)
+            odpu_records: HeatingVolumesOdpuRecord = (
+                self.heating_volumes_odpu.as_filtered_list(
+                    ("street", "house"),
+                    (correction_record.street, correction_record.house),
+                    f"{correction_date.year}",
+                )
+            )
+            if len(odpu_records) != 1:
+                raise ValueError(
+                    f"Can't correctly determine address for last year correction: \
+                    {correction_record.street} {correction_record.house}"
+                )
+            odpu_volume = getattr(odpu_records[0], month_abbr)
+            row = HeatingLastYearNegativeCorrection(
+                self.osv_file.date,
+                self.osv.address_record,
+                correction_date,
+                correction_sum,
+                correction_volume,
+                odpu_volume,
+            )
+            self.results.add_row(row)
+
     def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
         self.osv_file = OsvFile(osv_file_name, self.conf)
@@ -363,12 +475,10 @@ class RegionDir:
             )
             self._process_heating_data()
             self._process_gvs_data()
-            self._process_gvs_reaccural_data("Тепловая энергия для подогрева воды")
+            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
             self._process_gvs_elevated_data()
-            self._process_gvs_reaccural_data(
-                "Тепловая энергия для подогрева воды (повышенный %)"
-            )
-        # logging.info("Total valid/invalid reacurals: %s", self.reaccural_counter)
+            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL_ELEVATED)
+            self._process_last_year_negative_heating_correction()
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
@@ -424,7 +534,10 @@ if __name__ == "__main__":
             region.read_osvs()
             region.results.save()
         finally:
-            region.close()
+            try:
+                region.close()
+            except NameError:
+                pass
         gvs_ipu_change = IpuReplacementFinder(
             os.path.join(
                 config["DEFAULT"]["base_dir"],
