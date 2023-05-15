@@ -1,8 +1,9 @@
 "General data structures"
 
-from dataclasses import dataclass
-from typing import Self
+from __future__ import annotations
+
 import calendar
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -15,7 +16,7 @@ class MonthYear:
         return (self.year, self.month) < (other.year, other.month)
 
     @property
-    def previous(self) -> Self:
+    def previous(self) -> MonthYear:
         "Returns an instance of the previous month"
         if self.month > 1:
             return MonthYear(self.month - 1, self.year)
@@ -23,7 +24,7 @@ class MonthYear:
             return MonthYear(12, self.year - 1)
 
     @property
-    def next(self) -> Self:
+    def next(self) -> MonthYear:
         "Returns an instance of the next month"
         if self.month < 12:
             return MonthYear(self.month + 1, self.year)
@@ -32,4 +33,5 @@ class MonthYear:
 
     @property
     def month_abbr(self) -> str:
+        "Returns month's abbreviations, eg. 'jan', 'feb', 'mar', etc."
         return calendar.month_abbr[self.month].lower()

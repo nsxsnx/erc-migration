@@ -35,7 +35,7 @@ class BaseResultRow:
     "Base class for a row of result table"
     MAX_FIELDS = 47
 
-    def set_field(self, ind: int, value: str | None = None):
+    def set_field(self, ind: int, value: str | int | float | None = None):
         "Field setter by field number"
         setattr(self, f"f{ind:02d}", value)
 
@@ -148,7 +148,7 @@ class GvsSingleResultRow(BaseResultRow):
         accural: OsvAccuralRecord,
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
-        service: str | None = "Тепловая энергия для подогрева воды",
+        service: str = "Тепловая энергия для подогрева воды",
     ) -> None:
         super().__init__(date, data)
         self.set_field(4, ResultRecordType.GVS_ACCURAL.name)

@@ -36,6 +36,7 @@ class Reaccural:
     date: MonthYear
     totalsum: Decimal
     valid: bool
+    type: ReaccuralType
 
     def try_decompose_to_zero(self) -> None:
         """
@@ -105,7 +106,6 @@ class Reaccural:
                 f"{prev_date.month:02d}.{prev_date.year}.xlsx",
             ),
             header_row,
-            GvsDetailsRecord,
             lambda x: x.account,
         )
         gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
@@ -133,7 +133,6 @@ class Reaccural:
         self.valid = False
         self.records = []
         self.account_data = account_details
-        self.type = None
         self.serivce = service
         self.try_decompose_to_zero()
         if self.valid:

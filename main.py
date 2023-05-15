@@ -6,15 +6,14 @@ import logging
 import os
 import re
 import sys
-from collections import Counter
 from dataclasses import dataclass
 from os.path import basename
+from typing import Mapping
 
 from lib.addressfile import AddressFile
 from lib.datatypes import MonthYear
 from lib.detailsfile import (
     AccountDetailsFileSingleton,
-    AccountDetailsRecord,
     GvsDetailsFileSingleton,
     GvsDetailsRecord,
 )
@@ -66,16 +65,16 @@ class ColumnIndex:
 class RegionDir:
     "A directory with the data of a particular region"
 
-    def __init__(self, base_dir: str, conf: dict) -> None:
-        self.reaccural_counter = Counter()
+    account_details: AccountDetailsFileSingleton
+    osv_file: OsvFile
+    osv: OsvRecord
+    account: str
+
+    def __init__(self, base_dir: str, conf: Mapping[str, str]) -> None:
         logging.info("Initialazing %s region data...", base_dir)
         self.conf = {k: v.strip() for k, v in conf.items()}
         self.base_dir = base_dir
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
-        self.osv_file: OsvFile | None = None
-        self.osv: OsvRecord | None = None
-        self.account: str | None = None
-        self.account_details: AccountDetailsFileSingleton | None = None
         self.heating_yearly_correction_dates = [
             MonthYear(*[int(x) for x in reversed(date.split("-"))])
             for date in self.conf["heating.yearly_corrections_dates"].split(",")
@@ -146,8 +145,10 @@ class RegionDir:
         logging.info("Initialazing %s region data done", base_dir)
         self.results = ResultFile(self.base_dir, self.conf)
 
-    def _get_column_indexes(self) -> ColumnIndex:
+    def _get_osv_column_indexes(self) -> ColumnIndex:
         "Calculates indexes of columns in the table"
+        if self.osv_file is None:
+            raise ValueError("OSV file was not initialized yet")
         try:
             header_row = int(self.conf["osv.header_row"])
             column_index = ColumnIndex(
@@ -252,7 +253,6 @@ class RegionDir:
                 f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
             ),
             int(self.conf["gvs_details.header_row"]),
-            GvsDetailsRecord,
             lambda x: x.account,
         )
         gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
@@ -321,8 +321,7 @@ class RegionDir:
                 f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
             ),
             int(self.conf["gvs_details.header_row"]),
-            GvsDetailsRecord,
-            lambda x: x.account,
+            filter_func=lambda x: x.account,
         )
         gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
             ("account",), (self.osv.address_record.account,)
@@ -330,7 +329,7 @@ class RegionDir:
         try:
             gvs_details_row: GvsDetailsRecord = gvs_details_rows[0]
         except IndexError:
-            gvs_details_row: GvsDetailsRecord = GvsDetailsRecord.get_dummy_instance()
+            gvs_details_row = GvsDetailsRecord.get_dummy_instance()
         reaccural_details = Reaccural(
             self.account_details, self.osv_file.date, reaccural_sum, service
         )
@@ -354,7 +353,6 @@ class RegionDir:
                     38, "Не удалось разложить начисление на месяцы"
                 )
             self.results.add_row(gvs_reaccural_row)
-        self.reaccural_counter.update([reaccural_details.valid])
 
     def _process_gvs_elevated_data(self):
         service = "Тепловая энергия для подогрева воды (повышенный %)"
@@ -365,7 +363,6 @@ class RegionDir:
                 f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
             ),
             int(self.conf["gvs_details.header_row"]),
-            GvsDetailsRecord,
             lambda x: x.account,
         )
         gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
@@ -455,12 +452,13 @@ class RegionDir:
     def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
         self.osv_file = OsvFile(osv_file_name, self.conf)
-        column_index_data = self._get_column_indexes()
+        column_index_data = self._get_osv_column_indexes()
         for row in self.osv_file.get_data_row():
-            self.osv = self._init_current_osv_row(row, column_index_data)
-            if not self.osv:
+            osv = self._init_current_osv_row(row, column_index_data)
+            if not osv:
                 continue
-            if not self._is_debugging_current_account:
+            self.osv = osv
+            if not self._is_debugging_current_account():
                 continue
             self.account = self.osv.address_record.account
             self.account_details = AccountDetailsFileSingleton(
@@ -471,7 +469,6 @@ class RegionDir:
                     f"{self.osv.address_record.account}.xlsx",
                 ),
                 int(self.conf["account_details.header_row"]),
-                AccountDetailsRecord,
             )
             self._process_heating_data()
             self._process_gvs_data()

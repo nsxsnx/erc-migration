@@ -2,18 +2,18 @@
 
 import time
 from functools import wraps
-from typing import Any, Callable, Iterable, Type
+from typing import Any, Callable, Iterable, Type, TypeVar
 
-from openpyxl import Workbook, load_workbook, worksheet
+from openpyxl import Workbook, load_workbook
+
+T = TypeVar("T")
 
 
 class ExcelHelpers:
     """Helpers for Excel"""
 
     @classmethod
-    def get_col_by_name(
-        cls, sheet: worksheet, name: str, header_row: int | None = 1
-    ) -> int:
+    def get_col_by_name(cls, sheet, name: str, header_row: int = 1) -> int:
         """
         Search row for a cell with a particular value and return it's column number
         Return value is 1-based
@@ -31,7 +31,7 @@ class ExcelHelpers:
         raise ValueError(f'Column "{name}" was not found')
 
     @classmethod
-    def get_value_by_col_name(cls, sheet: worksheet, name: str, row: list[str]) -> str:
+    def get_value_by_col_name(cls, sheet, name: str, row: list[str]) -> str:
         """Returns cell value of a row by the column name"""
         col_number = ExcelHelpers.get_col_by_name(sheet, name, 1) - 1
         return row[col_number]
@@ -93,7 +93,7 @@ class BaseWorkBookData(BaseWorkBook):
     def as_filtered_list(self, fields: Iterable, values: Iterable) -> list[Any]:
         "Returns list of rows filtered by all values of a given pair of iterables"
 
-        def _check_fields(record, fields, values):
+        def _check_fields(record: Any, fields: Iterable, values: Iterable):
             for field, value in zip(fields, values):
                 if getattr(record, field) != value:
                     return False
@@ -111,19 +111,20 @@ class BaseWorkBookData(BaseWorkBook):
         self,
         filename: str,
         header_row: int,
-        record_class: Type,
+        record_class: Type[T],
         filter_func: Callable[[Any], bool] | None = None,
         max_col: int | None = None,
     ) -> None:
         self.filename = filename
-        self.records: list[record_class] = list()
+        self.records: list[T] = list()
         try:
             self.workbook = load_workbook(filename=filename, data_only=True)
             sheet = self.workbook.active
-            for row in sheet.iter_rows(
+            assert sheet is not None
+            for row in sheet.iter_rows(  # type: ignore
                 min_row=header_row + 1, max_col=max_col, values_only=True
             ):
-                record: record_class = record_class(*row)
+                record: T = record_class(*row)
                 if callable(filter_func) and not filter_func(record):
                     continue
                 self.records.append(record)
@@ -164,7 +165,7 @@ class BaseMultisheetWorkBookData(BaseWorkBook):
     ) -> list[Any]:
         "Returns list of rows filtered by all values of a given pair of iterables"
 
-        def _check_fields(record, fields, values):
+        def _check_fields(record: Any, fields: Iterable, values: Iterable):
             for field, value in zip(fields, values):
                 if getattr(record, field) != value:
                     return False
@@ -181,12 +182,12 @@ class BaseMultisheetWorkBookData(BaseWorkBook):
         self,
         filename: str,
         header_row: int,
-        record_class: Type,
+        record_class: Type[T],
         filter_func: Callable[[Any], bool] | None = None,
         max_col: int | None = None,
     ) -> None:
         self.filename = filename
-        self.sheets: dict[str, list[record_class]] = dict()
+        self.sheets: dict[str, list[T]] = dict()
         try:
             self.workbook = load_workbook(filename=filename, data_only=True)
             for sheet in self.workbook:
@@ -194,7 +195,7 @@ class BaseMultisheetWorkBookData(BaseWorkBook):
                 for row in sheet.iter_rows(
                     min_row=header_row + 1, max_col=max_col, values_only=True
                 ):
-                    record: record_class = record_class(*row)
+                    record: T = record_class(*row)
                     if callable(filter_func) and not filter_func(record):
                         continue
                     records.append(record)
@@ -211,7 +212,7 @@ class SingletonWithArg(type):
     Singleton hashed by the __init__() first string argument,
     """
 
-    _instances = {}
+    _instances: dict = {}
 
     def __call__(cls, arg: str, *args, **kwargs):
         key = (cls, arg)

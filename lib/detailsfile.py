@@ -1,7 +1,7 @@
 "Files with details of accounts and gvs accurence"
 
 from dataclasses import dataclass
-from typing import Any, Callable, Type
+from typing import Any, Callable
 
 from lib.datatypes import MonthYear
 from lib.exceptions import NoServiceRow
@@ -87,11 +87,12 @@ class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
         account,
         filename: str,
         header_row: int,
-        record_class: Type,
         filter_func: Callable[[Any], bool] | None = None,
         max_col: int | None = None,
     ) -> None:
-        super().__init__(filename, header_row, record_class, filter_func, max_col)
+        super().__init__(
+            filename, header_row, AccountDetailsRecord, filter_func, max_col
+        )
         self.account = account
 
     def _get_month_service_row(
@@ -132,6 +133,15 @@ class GvsDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
     Singleton Excel table with the details of GVS accurance
     Singleton is created for each file (month) to avoid expensive reading of *.xlsx file
     """
+
+    def __init__(
+        self,
+        filename: str,
+        header_row: int,
+        filter_func: Callable[[Any], bool] | None = None,
+        max_col: int | None = None,
+    ) -> None:
+        super().__init__(filename, header_row, GvsDetailsRecord, filter_func, max_col)
 
     def get_account_row(self, account: str) -> GvsDetailsRecord:
         "Returns table row with given account"

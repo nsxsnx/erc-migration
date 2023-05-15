@@ -69,16 +69,19 @@ class OsvFile(BaseWorkBook):
 
     def _init_date(self) -> None:
         """Reads OSV date from file"""
-        cell_value = self.sheet[self.conf["osv.date_cell"]].value
+        cell_value = self.sheet[self.conf["osv.date_cell"]].value  # type: ignore
         date_match = re.match(r"^[\s\S]* (\d{1,2})\.(\d{4})$", cell_value)
+        if not date_match:
+            raise ValueError(f"Date not found in OSV file header: {self.filename}")
         self.date = MonthYear(int(date_match.group(1)), int(date_match.group(2)))
         if not self.date.month or not self.date.year:
-            raise NameError
+            raise ValueError(f"Incorrect date in OSV file: {self.filename}")
         logging.debug("OSV date: %d.%d", self.date.month, self.date.year)
 
     def __init__(self, file: str, conf: dict) -> None:
         self.conf = conf
         logging.info("Reading OSV file %s...", file)
+        self.filename = file
         self.workbook = load_workbook(filename=file, data_only=True)
         self.sheet = self.workbook.active
         try:

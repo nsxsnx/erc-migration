@@ -54,14 +54,14 @@ class FilledResultTable(BaseWorkBookData):
         self,
         filename: str,
         header_row: int,
-        record_class: Type,
+        record_class: Type[Any],
         filter_func: Callable[[Any], bool] | None = None,
         max_col: int | None = None,
     ) -> None:
         super().__init__(filename, header_row, record_class, None, max_col)
         res: list[GvsIpuMetric] = []
         for i, rec in enumerate(self.records):
-            if not filter_func(rec):
+            if filter_func is not None and not filter_func(rec):
                 continue
             res.append(
                 GvsIpuMetric(

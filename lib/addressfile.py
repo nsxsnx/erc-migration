@@ -3,9 +3,12 @@
 import logging
 import string
 
-from openpyxl import load_workbook, worksheet
+from openpyxl import load_workbook
 
 from lib.helpers import BaseWorkBook, ExcelHelpers
+
+SheetDataFormatted = list[str]
+SheetDataRaw = list[tuple[str]]
 
 
 class AddressFile(BaseWorkBook):
@@ -23,11 +26,15 @@ class AddressFile(BaseWorkBook):
             return self._data_raw[name]
         raise KeyError(f'Sheet "{name}" not found in "{self.filename}"')
 
-    def _get_sheet_data(self, sheet: worksheet) -> tuple[list[str], list[list[str]]]:
+    def _get_sheet_data(self, sheet) -> tuple[SheetDataFormatted, SheetDataRaw]:
         formatted, raw = list(), list()
         for row in sheet.iter_rows(min_row=2, values_only=True):
             fields: dict = {}
             for field_name in self.fields:
+                if not field_name:
+                    raise ValueError(
+                        "Attribute field can't be empty, check ADDRESS_FORMAT in config"
+                    )
                 field_value = ExcelHelpers.get_value_by_col_name(sheet, field_name, row)
                 fields.update({field_name: field_value})
             formatted.append(self.record_format.format(**fields).lower())

@@ -54,7 +54,19 @@ files = [
     {file = "pycodestyle-2.10.0.tar.gz", hash = "sha256:347187bdb476329d98f695c213d7295a846d1152ff4fe9bacb8a9590b8ee7053"},
 ]
 
+[[package]]
+name = "types-openpyxl"
+version = "3.1.0.7"
+description = "Typing stubs for openpyxl"
+category = "dev"
+optional = false
+python-versions = "*"
+files = [
+    {file = "types-openpyxl-3.1.0.7.tar.gz", hash = "sha256:b55d9a83cc9b909a26ec69205fe8214f3fdd95cc5864b66847ba89baf306b77c"},
+    {file = "types_openpyxl-3.1.0.7-py3-none-any.whl", hash = "sha256:43181636c9d77bda587ffd671b7c1765e6de9ef9dd4556fc959c5cb5eac475d6"},
+]
+
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "5f356927bf3d5b216cc3fe80feddc0405d9d5c03bd6cba3c774a87de686db536"
+content-hash = "5ed1f394e40e8535d4ad46be0798a450dd0d2b3679196056fc56fd8355134869"
