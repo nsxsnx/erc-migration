@@ -447,6 +447,7 @@ class RegionDir:
                 correction_sum,
                 correction_volume,
                 odpu_volume,
+                service,
             )
             self.results.add_row(row)
         # add zero records closing balance records:

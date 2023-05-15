@@ -381,10 +381,11 @@ class HeatingLastYearNegativeCorrectionResultRow(BaseResultRow):
         correction_sum: float,
         correction_volume: float,
         odpu_volume: float,
+        service: str,
     ) -> None:
         super().__init__(date, data)
         self.set_field(4, ResultRecordType.HEATING_CORRECTION_NEGATIVE.name)
-        self.set_field(5, "Отопление")
+        self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
         self.price = HeatingTariff.get_tariff(correction_date)
@@ -400,7 +401,7 @@ class HeatingLastYearNegativeCorrectionResultRow(BaseResultRow):
         self.set_field(19, f"23.{correction_date.month:02d}.{correction_date.year}")
         self.set_field(20, "Контрольное")
         self.set_field(22, odpu_volume)
-        accural_sum = correction_volume * self.price - correction_sum
+        accural_sum = round(correction_volume * self.price - correction_sum, 2)
         self.set_field(24, accural_sum)
         self.set_field(25, accural_sum)
         self.set_field(36, accural_sum)
@@ -416,13 +417,22 @@ class HeatingLastYearCorrectionZeroResultRow(BaseResultRow):
         data: OsvAddressRecord,
         correction_date: MonthYear,
         account_details: AccountDetailsFileSingleton,
-        service,
+        service: str,
     ) -> None:
         super().__init__(date, data)
         self.set_field(4, ResultRecordType.HEATING_CORRECTION_ZERO.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
+        self.set_field(8, self.price)
+        self.set_field(9, "Общедомовый")
+        self.set_field(10, "01.01.2018")
+        self.set_field(11, "Подвал")
+        self.set_field(12, 1)
+        self.set_field(13, "ВКТ-5")
+        self.set_field(14, 1)
+        self.set_field(15, 6)
+        self.set_field(16, 3)
         self.set_field(
             45,
             account_details.get_service_month_closing_balance(date, service),
