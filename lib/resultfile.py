@@ -29,6 +29,7 @@ class ResultRecordType(Enum):
     GVS_REACCURAL = 4
     GVS_REACCURAL_ELEVATED = 5
     HEATING_CORRECTION_NEGATIVE = 6
+    HEATING_CORRECTION_ZERO = 7
 
 
 class BaseResultRow:
@@ -369,7 +370,7 @@ class GvsElevatedResultRow(GvsSingleResultRow):
             raise ZeroDataResultRow
 
 
-class HeatingLastYearNegativeCorrection(BaseResultRow):
+class HeatingLastYearNegativeCorrectionResultRow(BaseResultRow):
     "Result row for heating last-year negative correction"
 
     def __init__(
@@ -404,6 +405,28 @@ class HeatingLastYearNegativeCorrection(BaseResultRow):
         self.set_field(25, accural_sum)
         self.set_field(36, accural_sum)
         self.set_field(37, accural_sum)
+
+
+class HeatingLastYearCorrectionZeroResultRow(BaseResultRow):
+    "Result row for heating last-year correction closing balance only record"
+
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        correction_date: MonthYear,
+        account_details: AccountDetailsFileSingleton,
+        service,
+    ) -> None:
+        super().__init__(date, data)
+        self.set_field(4, ResultRecordType.HEATING_CORRECTION_ZERO.name)
+        self.set_field(5, service)
+        self.set_field(6, correction_date.month)
+        self.set_field(7, correction_date.year)
+        self.set_field(
+            45,
+            account_details.get_service_month_closing_balance(date, service),
+        )
 
 
 class ResultFile(BaseWorkBook):

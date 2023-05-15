@@ -41,7 +41,8 @@ from lib.resultfile import (
     GvsMultipleResultSecondRow,
     GvsReaccuralResultRow,
     GvsSingleResultRow,
-    HeatingLastYearNegativeCorrection,
+    HeatingLastYearCorrectionZeroResultRow,
+    HeatingLastYearNegativeCorrectionResultRow,
     HeatingResultRow,
     ResultFile,
     ResultRecordType,
@@ -422,10 +423,10 @@ class RegionDir:
             [m.lower() for m in calendar.month_abbr if m], start=1
         ):
             correction_sum = getattr(correction_record, month_abbr)
+            correction_date = MonthYear(month_num, self.osv_file.date.year - 1)
             if not correction_sum:
                 continue
             correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
-            correction_date = MonthYear(month_num, self.osv_file.date.year - 1)
             odpu_records: HeatingVolumesOdpuRecord = (
                 self.heating_volumes_odpu.as_filtered_list(
                     ("street", "house"),
@@ -439,7 +440,7 @@ class RegionDir:
                     {correction_record.street} {correction_record.house}"
                 )
             odpu_volume = getattr(odpu_records[0], month_abbr)
-            row = HeatingLastYearNegativeCorrection(
+            row = HeatingLastYearNegativeCorrectionResultRow(
                 self.osv_file.date,
                 self.osv.address_record,
                 correction_date,
@@ -448,6 +449,41 @@ class RegionDir:
                 odpu_volume,
             )
             self.results.add_row(row)
+        # add zero records closing balance records:
+        for cur_year, start_month in [
+            (self.osv_file.date.year - 1, 12),
+            (self.osv_file.date.year, self.osv_file.date.month),
+        ]:
+            try:
+                correction_record: HeatingCorrectionRecord = (
+                    self.heating_corrections.get_account_row(
+                        self.account,
+                        f"{cur_year}",
+                    )
+                )
+            except ValueError:
+                continue
+            except KeyError:
+                # sheet not found, which means the year is current and yet no data
+                # nothing needs to be done here
+                return
+            month_abbrs = reversed(
+                [m.lower() for m in calendar.month_abbr if m][:start_month]
+            )
+            for cnt, month_abbr in enumerate(month_abbrs):
+                month_num = start_month - cnt
+                correction_sum = getattr(correction_record, month_abbr)
+                correction_date = MonthYear(month_num, cur_year)
+                if correction_sum:
+                    break
+                row = HeatingLastYearCorrectionZeroResultRow(
+                    self.osv_file.date,
+                    self.osv.address_record,
+                    correction_date,
+                    self.account_details,
+                    service,
+                )
+                self.results.add_row(row)
 
     def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
@@ -470,16 +506,16 @@ class RegionDir:
                 ),
                 int(self.conf["account_details.header_row"]),
             )
-            self._process_heating_data()
-            self._process_gvs_data()
-            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
-            self._process_gvs_elevated_data()
-            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL_ELEVATED)
+            # self._process_heating_data()
+            # self._process_gvs_data()
+            # self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
+            # self._process_gvs_elevated_data()
+            # self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL_ELEVATED)
             self._process_last_year_negative_heating_correction()
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
-        for file_name in self.osv_files:
+        for file_name in self.osv_files[2:3]:
             try:
                 self._process_osv(file_name)
             except Exception as err:  # pylint: disable=W0718
@@ -535,12 +571,12 @@ if __name__ == "__main__":
                 region.close()
             except NameError:
                 pass
-        gvs_ipu_change = IpuReplacementFinder(
-            os.path.join(
-                config["DEFAULT"]["base_dir"],
-                section,
-                config["DEFAULT"]["result_file"].split("@", 1)[0],
-            )
-        )
-        gvs_ipu_change.find_replacements()
-        gvs_ipu_change.save()
+        # gvs_ipu_change = IpuReplacementFinder(
+        #     os.path.join(
+        #         config["DEFAULT"]["base_dir"],
+        #         section,
+        #         config["DEFAULT"]["result_file"].split("@", 1)[0],
+        #     )
+        # )
+        # gvs_ipu_change.find_replacements()
+        # gvs_ipu_change.save()
