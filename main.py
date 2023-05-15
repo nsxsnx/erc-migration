@@ -506,16 +506,16 @@ class RegionDir:
                 ),
                 int(self.conf["account_details.header_row"]),
             )
-            # self._process_heating_data()
-            # self._process_gvs_data()
-            # self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
-            # self._process_gvs_elevated_data()
-            # self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL_ELEVATED)
+            self._process_heating_data()
+            self._process_gvs_data()
+            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
+            self._process_gvs_elevated_data()
+            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL_ELEVATED)
             self._process_last_year_negative_heating_correction()
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
-        for file_name in self.osv_files[2:3]:
+        for file_name in self.osv_files:
             try:
                 self._process_osv(file_name)
             except Exception as err:  # pylint: disable=W0718
@@ -571,12 +571,12 @@ if __name__ == "__main__":
                 region.close()
             except NameError:
                 pass
-        # gvs_ipu_change = IpuReplacementFinder(
-        #     os.path.join(
-        #         config["DEFAULT"]["base_dir"],
-        #         section,
-        #         config["DEFAULT"]["result_file"].split("@", 1)[0],
-        #     )
-        # )
-        # gvs_ipu_change.find_replacements()
-        # gvs_ipu_change.save()
+        gvs_ipu_change = IpuReplacementFinder(
+            os.path.join(
+                config["DEFAULT"]["base_dir"],
+                section,
+                config["DEFAULT"]["result_file"].split("@", 1)[0],
+            )
+        )
+        gvs_ipu_change.find_replacements()
+        gvs_ipu_change.save()
