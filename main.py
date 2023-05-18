@@ -22,6 +22,8 @@ from lib.gvsipuchange import IpuReplacementFinder
 from lib.heatingcorrections import (
     HeatingCorrectionRecord,
     HeatingCorrectionsFile,
+    HeatingPositiveCorrection,
+    HeatingPositiveCorrectionType,
     HeatingVolumesOdpuFile,
     HeatingVolumesOdpuRecord,
 )
@@ -41,8 +43,10 @@ from lib.resultfile import (
     GvsMultipleResultSecondRow,
     GvsReaccuralResultRow,
     GvsSingleResultRow,
-    HeatingLastYearCorrectionZeroResultRow,
-    HeatingLastYearNegativeCorrectionResultRow,
+    HeatingNegativeCorrectionZeroResultRow,
+    HeatingCorrectionResultRow,
+    HeatingPositiveCorrectionExcessiveInstallmentResultRow,
+    HeatingPositiveCorrectionResultRow,
     HeatingResultRow,
     ResultFile,
     ResultRecordType,
@@ -384,7 +388,7 @@ class RegionDir:
         except (NoServiceRow, ZeroDataResultRow):
             pass
 
-    def _process_last_year_negative_heating_correction(self):
+    def _process_last_year_heating_correction(self):
         service = "Отопление"
 
         if self.osv_file.date not in self.heating_yearly_correction_dates:
@@ -407,9 +411,13 @@ class RegionDir:
             )
         except ValueError:
             return
+        is_positive_correction: bool = False
         if correction_record.year_correction >= 0:
-            return
-        if reaccural != correction_record.year_correction:
+            is_positive_correction = True
+        if (
+            not is_positive_correction
+            and reaccural != correction_record.year_correction
+        ):
             logging.warning(
                 "Could not determine last year heating correction for %s in %s. "
                 "Reaccural: %s; last year correction: %s",
@@ -440,7 +448,7 @@ class RegionDir:
                     {correction_record.street} {correction_record.house}"
                 )
             odpu_volume = getattr(odpu_records[0], month_abbr)
-            row = HeatingLastYearNegativeCorrectionResultRow(
+            row = HeatingCorrectionResultRow(
                 self.osv_file.date,
                 self.osv.address_record,
                 correction_date,
@@ -450,7 +458,106 @@ class RegionDir:
                 service,
             )
             self.results.add_row(row)
-        # add zero records closing balance records:
+        if is_positive_correction:
+            self._add_future_installment_records(service)
+        if not is_positive_correction:
+            self._add_closing_balance_records(service)
+
+    def _is_account_closed_in_month(
+        self, correction: HeatingPositiveCorrection, month: int
+    ):
+        if correction.type is HeatingPositiveCorrectionType.OPEN_ACCOUNT:
+            return False
+        if not correction.is_active_current_year:
+            return False
+        if month == 12:
+            return False
+        if correction.current_year_correction.get_by_month_num(month + 1):
+            return False
+        return True
+
+    def _add_future_installment_records(self, service):
+        correction = HeatingPositiveCorrection(
+            self.account,
+            self.heating_corrections,
+            self.osv_file.date,
+        )
+        if (
+            correction.type is HeatingPositiveCorrectionType.OPEN_ACCOUNT
+            or HeatingPositiveCorrectionType.CLOSED_CURRENT_YEAR in correction.type
+        ):
+            total_closing_balance: float
+            total_future_installment: float
+            is_last_row: bool = False
+            for month_num in range(self.osv_file.date.month, 13):
+                correction_date = MonthYear(month_num, correction.current_year)
+                reaccural_sum = self.account_details.get_service_month_reaccural(
+                    MonthYear(month_num, self.osv_file.date.year),
+                    service,
+                )
+                if month_num == self.osv_file.date.month:
+                    _total_correction = correction.last_year_correction.total
+                    future_installment = _total_correction - reaccural_sum
+                    total_closing_balance = reaccural_sum
+                    total_future_installment = future_installment
+                else:
+                    future_installment = None
+                    total_closing_balance += reaccural_sum
+                    total_future_installment -= reaccural_sum
+                if self._is_account_closed_in_month(correction, month_num):
+                    is_last_row = True
+                    if not total_future_installment:
+                        future_installment = None
+                        total_closing_balance = correction.current_year_correction.total
+                    if total_future_installment < 0:
+                        row = HeatingPositiveCorrectionExcessiveInstallmentResultRow(
+                            self.osv_file.date,
+                            self.osv.address_record,
+                            correction_date,
+                            abs(total_future_installment),
+                            service,
+                        )
+                        self.results.add_row(row)
+                        total_future_installment = 0
+                row = HeatingPositiveCorrectionResultRow(
+                    self.osv_file.date,
+                    self.osv.address_record,
+                    correction_date,
+                    service,
+                    future_installment,
+                    total_closing_balance,
+                    total_future_installment,
+                )
+                self.results.add_row(row)
+                if is_last_row:
+                    break
+        elif HeatingPositiveCorrectionType.CLOSED_LAST_YEAR in correction.type:
+            reaccural_sum = self.account_details.get_service_month_reaccural(
+                self.osv_file.date.year,
+                service,
+            )
+            correction_date = self.osv_file.date
+            future_installment = None
+            total_closing_balance = reaccural_sum
+            total_future_installment = 0
+            row = HeatingPositiveCorrectionResultRow(
+                self.osv_file.date,
+                self.osv.address_record,
+                correction_date,
+                service,
+                future_installment,
+                total_closing_balance,
+                total_future_installment,
+            )
+            self.results.add_row(row)
+        elif HeatingPositiveCorrectionType.CLOSED_BOTH_YEARS in correction.type:
+            pass
+        else:
+            raise ValueError(
+                f"Unknown positive correction type: {correction.account} {correction.current_year}"
+            )
+
+    def _add_closing_balance_records(self, service):
         for cur_year, start_month in [
             (self.osv_file.date.year - 1, 12),
             (self.osv_file.date.year, self.osv_file.date.month),
@@ -477,7 +584,7 @@ class RegionDir:
                 correction_date = MonthYear(month_num, cur_year)
                 if correction_sum:
                     break
-                row = HeatingLastYearCorrectionZeroResultRow(
+                row = HeatingNegativeCorrectionZeroResultRow(
                     self.osv_file.date,
                     self.osv.address_record,
                     correction_date,
@@ -512,7 +619,7 @@ class RegionDir:
             self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
             self._process_gvs_elevated_data()
             self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL_ELEVATED)
-            self._process_last_year_negative_heating_correction()
+            self._process_last_year_heating_correction()
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"

@@ -26,10 +26,12 @@ class ResultRecordType(Enum):
     HEATING_REACCURAL = 2
     GVS_ACCURAL = 3
     GVS_ELEVATED = 4
-    GVS_REACCURAL = 4
-    GVS_REACCURAL_ELEVATED = 5
-    HEATING_CORRECTION_NEGATIVE = 6
-    HEATING_CORRECTION_ZERO = 7
+    GVS_REACCURAL = 5
+    GVS_REACCURAL_ELEVATED = 6
+    HEATING_CORRECTION = 7
+    HEATING_CORRECTION_ZERO = 8
+    HEATING_POSITIVE_CORRECTION = 9
+    HEATING_POSITIVE_CORRECTION_EXCESSIVE_INSTALLMENT = 10
 
 
 class BaseResultRow:
@@ -370,8 +372,8 @@ class GvsElevatedResultRow(GvsSingleResultRow):
             raise ZeroDataResultRow
 
 
-class HeatingLastYearNegativeCorrectionResultRow(BaseResultRow):
-    "Result row for heating last-year negative correction"
+class HeatingCorrectionResultRow(BaseResultRow):
+    "Result row for heating last-year correction"
 
     def __init__(
         self,
@@ -384,7 +386,7 @@ class HeatingLastYearNegativeCorrectionResultRow(BaseResultRow):
         service: str,
     ) -> None:
         super().__init__(date, data)
-        self.set_field(4, ResultRecordType.HEATING_CORRECTION_NEGATIVE.name)
+        self.set_field(4, ResultRecordType.HEATING_CORRECTION.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
@@ -408,7 +410,7 @@ class HeatingLastYearNegativeCorrectionResultRow(BaseResultRow):
         self.set_field(37, accural_sum)
 
 
-class HeatingLastYearCorrectionZeroResultRow(BaseResultRow):
+class HeatingNegativeCorrectionZeroResultRow(BaseResultRow):
     "Result row for heating last-year correction closing balance only record"
 
     def __init__(
@@ -424,6 +426,7 @@ class HeatingLastYearCorrectionZeroResultRow(BaseResultRow):
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
+        self.price = HeatingTariff.get_tariff(correction_date)
         self.set_field(8, self.price)
         self.set_field(9, "Общедомовый")
         self.set_field(10, "01.01.2018")
@@ -437,6 +440,76 @@ class HeatingLastYearCorrectionZeroResultRow(BaseResultRow):
             45,
             account_details.get_service_month_closing_balance(date, service),
         )
+
+
+class HeatingPositiveCorrectionResultRow(BaseResultRow):
+    "Result row for heating last-year correction closing balance only record"
+
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        correction_date: MonthYear,
+        service: str,
+        future_installment: float | None,
+        total_closing_balance: float,
+        total_future_installment: float,
+    ) -> None:
+        super().__init__(date, data)
+        self.set_field(4, ResultRecordType.HEATING_POSITIVE_CORRECTION.name)
+        self.set_field(5, service)
+        self.set_field(6, correction_date.month)
+        self.set_field(7, correction_date.year)
+        self.price = HeatingTariff.get_tariff(correction_date)
+        self.set_field(8, self.price)
+        self.set_field(9, "Общедомовый")
+        self.set_field(10, "01.01.2018")
+        self.set_field(11, "Подвал")
+        self.set_field(12, 1)
+        self.set_field(13, "ВКТ-5")
+        self.set_field(14, 1)
+        self.set_field(15, 6)
+        self.set_field(16, 3)
+        self.set_field(19, f"31.12.{correction_date.year}")
+        self.set_field(20, "Контрольное")
+        self.set_field(39, future_installment)
+        self.set_field(45, total_closing_balance)
+        self.set_field(46, total_future_installment)
+
+
+class HeatingPositiveCorrectionExcessiveInstallmentResultRow(BaseResultRow):
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        correction_date: MonthYear,
+        accural_sum: float,
+        service: str,
+    ) -> None:
+        super().__init__(date, data)
+        self.set_field(
+            4, ResultRecordType.HEATING_POSITIVE_CORRECTION_EXCESSIVE_INSTALLMENT.name
+        )
+        self.set_field(5, service)
+        self.set_field(6, correction_date.month)
+        self.set_field(7, correction_date.year)
+        self.price = HeatingTariff.get_tariff(correction_date)
+        self.set_field(8, self.price)
+        self.set_field(9, "Общедомовый")
+        self.set_field(10, "01.01.2018")
+        self.set_field(11, "Подвал")
+        self.set_field(12, 1)
+        self.set_field(13, "ВКТ-5")
+        self.set_field(14, 1)
+        self.set_field(15, 6)
+        self.set_field(16, 3)
+        quantity = f"{accural_sum / self.price:.4f}"
+        self.set_field(23, quantity)
+        self.set_field(24, accural_sum)
+        self.set_field(25, accural_sum)
+        self.set_field(35, quantity)
+        self.set_field(36, accural_sum)
+        self.set_field(37, accural_sum)
 
 
 class ResultFile(BaseWorkBook):

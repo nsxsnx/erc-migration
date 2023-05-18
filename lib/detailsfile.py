@@ -1,7 +1,7 @@
 "Files with details of accounts and gvs accurence"
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Self
 
 from lib.datatypes import MonthYear
 from lib.exceptions import NoServiceRow
@@ -66,7 +66,7 @@ class GvsDetailsRecord:
     total: float
 
     @classmethod
-    def get_dummy_instance(cls):
+    def get_dummy_instance(cls) -> Self:
         "Returns class instance wih all attributes set to None"
         return cls(
             *[
