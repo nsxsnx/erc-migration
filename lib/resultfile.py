@@ -1,5 +1,6 @@
 "Table to store results"
 
+from decimal import Decimal
 import logging
 import os
 import shutil
@@ -451,16 +452,17 @@ class HeatingPositiveCorrectionResultRow(BaseResultRow):
         data: OsvAddressRecord,
         correction_date: MonthYear,
         service: str,
-        future_installment: float | None,
-        total_closing_balance: float,
-        total_future_installment: float,
+        future_installment: Decimal | None,
+        total_closing_balance: Decimal,
+        total_future_installment: Decimal,
     ) -> None:
         super().__init__(date, data)
+        self.set_field(0, correction_date.month)
         self.set_field(4, ResultRecordType.HEATING_POSITIVE_CORRECTION.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
-        self.price = HeatingTariff.get_tariff(correction_date)
+        self.price = Decimal(HeatingTariff.get_tariff(correction_date))
         self.set_field(8, self.price)
         self.set_field(9, "Общедомовый")
         self.set_field(10, "01.01.2018")
@@ -478,12 +480,14 @@ class HeatingPositiveCorrectionResultRow(BaseResultRow):
 
 
 class HeatingPositiveCorrectionExcessiveInstallmentResultRow(BaseResultRow):
+    "Result row for installment that can not be distributed to correction rows"
+
     def __init__(
         self,
         date: MonthYear,
         data: OsvAddressRecord,
         correction_date: MonthYear,
-        accural_sum: float,
+        accural_sum: Decimal,
         service: str,
     ) -> None:
         super().__init__(date, data)
@@ -493,7 +497,7 @@ class HeatingPositiveCorrectionExcessiveInstallmentResultRow(BaseResultRow):
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
-        self.price = HeatingTariff.get_tariff(correction_date)
+        self.price = Decimal(HeatingTariff.get_tariff(correction_date))
         self.set_field(8, self.price)
         self.set_field(9, "Общедомовый")
         self.set_field(10, "01.01.2018")

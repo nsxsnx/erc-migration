@@ -23,7 +23,7 @@ from lib.heatingcorrections import (
     HeatingCorrectionRecord,
     HeatingCorrectionsFile,
     HeatingPositiveCorrection,
-    HeatingPositiveCorrectionType,
+    HeatingCorrectionAccountStatus,
     HeatingVolumesOdpuFile,
     HeatingVolumesOdpuRecord,
 )
@@ -466,13 +466,13 @@ class RegionDir:
     def _is_account_closed_in_month(
         self, correction: HeatingPositiveCorrection, month: int
     ):
-        if correction.type is HeatingPositiveCorrectionType.OPEN_ACCOUNT:
+        if correction.type is HeatingCorrectionAccountStatus.OPEN:
             return False
         if not correction.is_active_current_year:
             return False
         if month == 12:
             return False
-        if correction.current_year_correction.get_by_month_num(month + 1):
+        if correction.current_year_correction.get_by_month_number(month + 1):
             return False
         return True
 
@@ -483,20 +483,22 @@ class RegionDir:
             self.osv_file.date,
         )
         if (
-            correction.type is HeatingPositiveCorrectionType.OPEN_ACCOUNT
-            or HeatingPositiveCorrectionType.CLOSED_CURRENT_YEAR in correction.type
+            correction.type is HeatingCorrectionAccountStatus.OPEN
+            or HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR in correction.type
         ):
-            total_closing_balance: float
-            total_future_installment: float
+            total_closing_balance: Decimal
+            total_future_installment: Decimal
             is_last_row: bool = False
             for month_num in range(self.osv_file.date.month, 13):
                 correction_date = MonthYear(month_num, correction.current_year)
-                reaccural_sum = self.account_details.get_service_month_reaccural(
-                    MonthYear(month_num, self.osv_file.date.year),
-                    service,
-                )
+                reaccural_sum = Decimal(
+                    self.account_details.get_service_month_reaccural(
+                        MonthYear(month_num, self.osv_file.date.year),
+                        service,
+                    )
+                ).quantize(Decimal("0.01"))
                 if month_num == self.osv_file.date.month:
-                    _total_correction = correction.last_year_correction.total
+                    _total_correction = correction.last_year_correction.year_correction
                     future_installment = _total_correction - reaccural_sum
                     total_closing_balance = reaccural_sum
                     total_future_installment = future_installment
@@ -506,7 +508,8 @@ class RegionDir:
                     total_future_installment -= reaccural_sum
                 if self._is_account_closed_in_month(correction, month_num):
                     is_last_row = True
-                    if not total_future_installment:
+                    if abs(total_future_installment) < Decimal("0.01"):
+                        total_future_installment = Decimal("0.00")
                         future_installment = None
                         total_closing_balance = correction.current_year_correction.total
                     if total_future_installment < 0:
@@ -531,7 +534,7 @@ class RegionDir:
                 self.results.add_row(row)
                 if is_last_row:
                     break
-        elif HeatingPositiveCorrectionType.CLOSED_LAST_YEAR in correction.type:
+        elif HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR in correction.type:
             reaccural_sum = self.account_details.get_service_month_reaccural(
                 self.osv_file.date.year,
                 service,
@@ -550,7 +553,7 @@ class RegionDir:
                 total_future_installment,
             )
             self.results.add_row(row)
-        elif HeatingPositiveCorrectionType.CLOSED_BOTH_YEARS in correction.type:
+        elif HeatingCorrectionAccountStatus.CLOSED_BOTH_YEARS in correction.type:
             pass
         else:
             raise ValueError(

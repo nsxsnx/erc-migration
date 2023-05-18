@@ -35,7 +35,7 @@ class HeatingCorrectionRecord:
     nov: float
     dec: float
     total: float
-    year_correction: Decimal
+    year_correction: float
     vkv_jan: float
     vkv_feb: float
     vkv_mar: float
@@ -50,6 +50,7 @@ class HeatingCorrectionRecord:
     vkv_dec: float
 
     def __post_init__(self):
+        self._month_index: int = 0
         if self.year_correction is not None:
             self.year_correction = Decimal(self.year_correction).quantize(
                 Decimal("0.01")
@@ -66,13 +67,11 @@ class HeatingCorrectionRecord:
             return getattr(self, month_abbrs[self._month_index - 1])
         raise StopIteration
 
-    def as_month_list(self):
-        return [i for i in self]
-
-    def get_by_month_num(self, num: int):
+    def get_by_month_number(self, month: int) -> float:
+        "Returns correction value for a given month:int"
         monthes = [month for month in calendar.month_abbr if month]
         abbrs = {index: month.lower() for index, month in enumerate(monthes, start=1)}
-        return getattr(self, abbrs[num])
+        return getattr(self, abbrs[month])
 
 
 class HeatingCorrectionsFile(BaseMultisheetWorkBookData):
@@ -106,8 +105,9 @@ class HeatingVolumesOdpuFile(BaseMultisheetWorkBookData):
     "Last-year heating ODPU volumes Excel table"
 
 
-class HeatingPositiveCorrectionType(Flag):
-    OPEN_ACCOUNT = 0
+class HeatingCorrectionAccountStatus(Flag):
+    "Current account status in positive heating correction calculations"
+    OPEN = 0
     CLOSED_LAST_YEAR = auto()
     CLOSED_CURRENT_YEAR = auto()
     CLOSED_BOTH_YEARS = CLOSED_LAST_YEAR | CLOSED_CURRENT_YEAR
@@ -144,8 +144,8 @@ class HeatingPositiveCorrection:
             )
         except ValueError:
             self.is_active_current_year = False
-        self.type = HeatingPositiveCorrectionType.OPEN_ACCOUNT
+        self.type = HeatingCorrectionAccountStatus.OPEN
         if not all(self.last_year_correction):
-            self.type |= HeatingPositiveCorrectionType.CLOSED_LAST_YEAR
+            self.type |= HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR
         if not self.is_active_current_year or not all(self.current_year_correction):
-            self.type |= HeatingPositiveCorrectionType.CLOSED_CURRENT_YEAR
+            self.type |= HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR
