@@ -18,7 +18,7 @@ from lib.detailsfile import (
     GvsDetailsRecord,
 )
 from lib.exceptions import NoServiceRow, ZeroDataResultRow
-from lib.gvsipuchange import IpuReplacementFinder
+from lib.filledresultfile import AccountClosingBalance, FilledTableUpdater, GvsIpuMetric
 from lib.heatingcorrections import (
     HeatingCorrectionRecord,
     HeatingCorrectionsFile,
@@ -682,12 +682,26 @@ if __name__ == "__main__":
                 region.close()
             except NameError:
                 pass
-        gvs_ipu_change = IpuReplacementFinder(
-            os.path.join(
-                config["DEFAULT"]["base_dir"],
-                section,
-                config["DEFAULT"]["result_file"].split("@", 1)[0],
-            )
+        result_file_name = os.path.join(
+            config["DEFAULT"]["base_dir"],
+            section,
+            config["DEFAULT"]["result_file"].split("@", 1)[0],
         )
-        gvs_ipu_change.find_replacements()
-        gvs_ipu_change.save()
+        filled_table = FilledTableUpdater(
+            result_file_name,
+            filter_func=lambda s: s.type_name == ResultRecordType.GVS_ACCURAL.name,
+        )
+        filled_table.table.records_to_class(GvsIpuMetric)
+        filled_table.find_gvs_ipu_replacements()
+        filled_table.save()
+        filled_table = FilledTableUpdater(
+            result_file_name,
+            filter_func=lambda s: s.type_name
+            in (
+                ResultRecordType.HEATING_ACCURAL.name,
+                ResultRecordType.HEATING_POSITIVE_CORRECTION.name,
+            ),
+        )
+        filled_table.table.records_to_class(AccountClosingBalance)
+        filled_table.decrease_closing_balance()
+        filled_table.save()
