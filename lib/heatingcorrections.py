@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Flag, auto
 from lib.datatypes import MonthYear
+from lib.detailsfile import AccountDetailsFileSingleton
 
 from lib.helpers import BaseMultisheetWorkBookData
 
@@ -120,11 +121,13 @@ class HeatingPositiveCorrection:
 
     def __init__(
         self,
-        account: str,
+        account_details: AccountDetailsFileSingleton,
         heating_corrections: HeatingCorrectionsFile,
         curent_date: MonthYear,
+        service: str,
     ) -> None:
-        self.account = account
+        self.account_details = account_details
+        self.account = self.account_details.account
         self.current_year = curent_date.year
         self.last_year = self.current_year - 1
         # no need to try here, because we would not be here unless last year correction exists
@@ -144,15 +147,16 @@ class HeatingPositiveCorrection:
             )
         except ValueError:
             self.is_active_current_year = False
-        self.type = HeatingCorrectionAccountStatus.OPEN
-        two_year_correction = [
-            *[i for i in self.last_year_correction],
-            *[i for i in self.current_year_correction],
-        ]
-        for counter, correction in enumerate(two_year_correction[::-1], start=1):
-            if correction:
-                break
-            self.type |= HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR
-            if counter > 12:
-                self.type |= HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR
-                break
+        current_year_close_month = self.account_details.get_service_closing_month(
+            self.current_year, service
+        )
+        match current_year_close_month:
+            case -1:
+                self.type = HeatingCorrectionAccountStatus.OPEN
+            case 0:
+                self.type = (
+                    HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR
+                    | HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR
+                )
+            case _:
+                self.type = HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR

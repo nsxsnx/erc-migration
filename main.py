@@ -463,26 +463,17 @@ class RegionDir:
         if not is_positive_correction:
             self._add_closing_balance_records(service)
 
-    def _is_account_closed_in_month(
-        self, correction: HeatingPositiveCorrection, month: int
-    ):
-        if correction.type is HeatingCorrectionAccountStatus.OPEN:
-            return False
-        if not correction.is_active_current_year:
-            return False
-        if month == 12:
-            return False
-        if correction.current_year_correction.get_by_month_number(month + 1):
-            return False
-        return True
-
     def _add_future_installment_records(self, service):
         correction = HeatingPositiveCorrection(
-            self.account,
+            self.account_details,
             self.heating_corrections,
             self.osv_file.date,
+            service,
         )
         if HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR not in correction.type:
+            account_closing_month = self.account_details.get_service_closing_month(
+                correction.current_year, service
+            )
             total_closing_balance: Decimal
             total_future_installment: Decimal
             is_last_row: bool = False
@@ -503,7 +494,7 @@ class RegionDir:
                     future_installment = None
                     total_closing_balance += reaccural_sum
                     total_future_installment -= reaccural_sum
-                if self._is_account_closed_in_month(correction, month_num):
+                if month_num == account_closing_month:
                     is_last_row = True
                     if abs(total_future_installment) < Decimal("0.01"):
                         total_future_installment = Decimal("0.00")
@@ -533,7 +524,7 @@ class RegionDir:
                     break
         else:
             reaccural_sum = self.account_details.get_service_month_reaccural(
-                self.osv_file.date.year,
+                self.osv_file.date,
                 service,
             )
             correction_date = self.osv_file.date

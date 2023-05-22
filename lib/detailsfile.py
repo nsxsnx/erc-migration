@@ -127,6 +127,33 @@ class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
         "Returns accural for service for a particular month"
         return self._get_month_service_row(date, service).accural
 
+    def get_service_year_accurals(self, year: int, service: str) -> list[float]:
+        "Returns all acurances for a given service in a particular year"
+        res = []
+        for month in range(1, 13):
+            try:
+                accural = self.get_service_month_accural(
+                    MonthYear(month, year), service
+                )
+                res.append(accural)
+            except NoServiceRow:
+                res.append(0.00)
+        return res
+
+    def get_service_closing_month(self, year: int, servce: str) -> int:
+        """
+        Returns the number of month in a given year when account was closed.
+        or zero if closed in previous year
+        or -1 if was not closed
+        """
+        accurals = self.get_service_year_accurals(year, servce)
+        if accurals[11]:
+            return -1
+        for i in range(10, -1, -1):
+            if accurals[i]:
+                return i + 1
+        return 0
+
 
 class GvsDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
     """
