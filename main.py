@@ -482,10 +482,7 @@ class RegionDir:
             self.heating_corrections,
             self.osv_file.date,
         )
-        if (
-            correction.type is HeatingCorrectionAccountStatus.OPEN
-            or HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR in correction.type
-        ):
+        if HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR not in correction.type:
             total_closing_balance: Decimal
             total_future_installment: Decimal
             is_last_row: bool = False
@@ -534,7 +531,7 @@ class RegionDir:
                 self.results.add_row(row)
                 if is_last_row:
                     break
-        elif HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR in correction.type:
+        else:
             reaccural_sum = self.account_details.get_service_month_reaccural(
                 self.osv_file.date.year,
                 service,
@@ -553,12 +550,6 @@ class RegionDir:
                 total_future_installment,
             )
             self.results.add_row(row)
-        elif HeatingCorrectionAccountStatus.CLOSED_BOTH_YEARS in correction.type:
-            pass
-        else:
-            raise ValueError(
-                f"Unknown positive correction type: {correction.account} {correction.current_year}"
-            )
 
     def _add_closing_balance_records(self, service):
         for cur_year, start_month in [

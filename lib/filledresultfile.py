@@ -176,6 +176,10 @@ class FilledTableUpdater:
         )
 
     def decrease_closing_balance(self):
+        """
+        Closing balance of main heating record must be decreased by the value of
+        positive correction (installment) record
+        """
         logging.info("Decreasing closing balance...")
         heating_corrections: list[AccountClosingBalance] = self.table.as_filtered_list(
             ("type_name",), ("HEATING_POSITIVE_CORRECTION",)
@@ -197,13 +201,15 @@ class FilledTableUpdater:
                 case 0:
                     continue
                     # raise ValueError(
-                    #     f"No corresponding heating accural found: {correction.account} {correction.date}"
+                    #     f"No corresponding heating accural found: \
+                    #         {correction.account} {correction.date}"
                     # )
                 case 1:
                     pass
                 case _:
                     raise ValueError(
-                        f"Too many corresponding heating accural found: {correction.account} {correction.date}"
+                        f"Too many corresponding heating accural found: \
+                            {correction.account} {correction.date}"
                     )
             accural_row = heating_accurals[0]
             cell = self.table.workbook.active[f"AT{accural_row.row_num}"]

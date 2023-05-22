@@ -145,7 +145,14 @@ class HeatingPositiveCorrection:
         except ValueError:
             self.is_active_current_year = False
         self.type = HeatingCorrectionAccountStatus.OPEN
-        if not all(self.last_year_correction):
-            self.type |= HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR
-        if not self.is_active_current_year or not all(self.current_year_correction):
+        two_year_correction = [
+            *[i for i in self.last_year_correction],
+            *[i for i in self.current_year_correction],
+        ]
+        for counter, correction in enumerate(two_year_correction[::-1], start=1):
+            if correction:
+                break
             self.type |= HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR
+            if counter > 12:
+                self.type |= HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR
+                break
