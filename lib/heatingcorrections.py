@@ -160,3 +160,9 @@ class HeatingPositiveCorrection:
                 )
             case _:
                 self.type = HeatingCorrectionAccountStatus.CLOSED_CURRENT_YEAR
+                if current_year_close_month <= curent_date.month:
+                    # Current month is the month when last year correction has been accured.
+                    #
+                    # Accounts which were closed in the current year before the correction
+                    # must be threated the same way as accounts which were closed last year
+                    self.type |= HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR

@@ -476,7 +476,6 @@ class RegionDir:
             )
             total_closing_balance: Decimal
             total_future_installment: Decimal
-            is_last_row: bool = False
             for month_num in range(self.osv_file.date.month, 13):
                 correction_date = MonthYear(month_num, correction.current_year)
                 reaccural_sum = Decimal(
@@ -494,22 +493,6 @@ class RegionDir:
                     future_installment = None
                     total_closing_balance += reaccural_sum
                     total_future_installment -= reaccural_sum
-                if month_num == account_closing_month:
-                    is_last_row = True
-                    if abs(total_future_installment) < Decimal("0.01"):
-                        total_future_installment = Decimal("0.00")
-                        future_installment = None
-                        total_closing_balance = correction.current_year_correction.total
-                    if total_future_installment < 0:
-                        row = HeatingPositiveCorrectionExcessiveInstallmentResultRow(
-                            self.osv_file.date,
-                            self.osv.address_record,
-                            correction_date,
-                            abs(total_future_installment),
-                            service,
-                        )
-                        self.results.add_row(row)
-                        total_future_installment = 0
                 row = HeatingPositiveCorrectionResultRow(
                     self.osv_file.date,
                     self.osv.address_record,
@@ -520,7 +503,33 @@ class RegionDir:
                     total_future_installment,
                 )
                 self.results.add_row(row)
-                if is_last_row:
+                if month_num == account_closing_month:
+                    total_future_installment = Decimal("0.00")
+                    future_installment = None
+                    total_closing_balance = (
+                        correction.last_year_correction.year_correction
+                    )
+                    correction_date = MonthYear(month_num + 1, correction.current_year)
+                    row = HeatingPositiveCorrectionResultRow(
+                        self.osv_file.date,
+                        self.osv.address_record,
+                        correction_date,
+                        service,
+                        future_installment,
+                        total_closing_balance,
+                        total_future_installment,
+                    )
+                    self.results.add_row(row)
+                    # if total_future_installment < 0:
+                    #     row = HeatingPositiveCorrectionExcessiveInstallmentResultRow(
+                    #         self.osv_file.date,
+                    #         self.osv.address_record,
+                    #         correction_date,
+                    #         abs(total_future_installment),
+                    #         service,
+                    #     )
+                    #     self.results.add_row(row)
+                    #     total_future_installment = 0
                     break
         else:
             reaccural_sum = self.account_details.get_service_month_reaccural(
