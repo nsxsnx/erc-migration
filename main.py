@@ -532,13 +532,9 @@ class RegionDir:
                     #     total_future_installment = 0
                     break
         else:
-            reaccural_sum = self.account_details.get_service_month_reaccural(
-                self.osv_file.date,
-                service,
-            )
             correction_date = self.osv_file.date
             future_installment = None
-            total_closing_balance = reaccural_sum
+            total_closing_balance = correction.last_year_correction.year_correction
             total_future_installment = 0
             row = HeatingPositiveCorrectionResultRow(
                 self.osv_file.date,
