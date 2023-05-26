@@ -12,7 +12,7 @@ class HeatingTariff(float, Enum):
     T2021_1 = 3_276.63
     T2021_2 = 3_300.00
     T2022_1 = 3_457.63
-    T2022_2 = 3_589.02
+    T2022_2 = 3_425.40
 
     @classmethod
     def get_tariff(cls, date: MonthYear):
