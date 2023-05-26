@@ -32,7 +32,7 @@ class ResultRecordType(Enum):
     HEATING_CORRECTION = 7
     HEATING_CORRECTION_ZERO = 8
     HEATING_POSITIVE_CORRECTION = 9
-    HEATING_POSITIVE_CORRECTION_EXCESSIVE_INSTALLMENT = 10
+    HEATING_POSITIVE_CORRECTION_EXCESSIVE_REACCURAL = 10
 
 
 class BaseResultRow:
@@ -479,8 +479,8 @@ class HeatingPositiveCorrectionResultRow(BaseResultRow):
         self.set_field(46, total_future_installment)
 
 
-class HeatingPositiveCorrectionExcessiveInstallmentResultRow(BaseResultRow):
-    "Result row for installment that can not be distributed to correction rows"
+class HeatingPositiveCorrectionExcessiveReaccuralResultRow(BaseResultRow):
+    "Result row for reaccural that can not be distributed to correction rows"
 
     def __init__(
         self,
@@ -492,7 +492,7 @@ class HeatingPositiveCorrectionExcessiveInstallmentResultRow(BaseResultRow):
     ) -> None:
         super().__init__(date, data)
         self.set_field(
-            4, ResultRecordType.HEATING_POSITIVE_CORRECTION_EXCESSIVE_INSTALLMENT.name
+            4, ResultRecordType.HEATING_POSITIVE_CORRECTION_EXCESSIVE_REACCURAL.name
         )
         self.set_field(5, service)
         self.set_field(6, correction_date.month)

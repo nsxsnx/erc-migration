@@ -45,7 +45,7 @@ from lib.resultfile import (
     GvsSingleResultRow,
     HeatingNegativeCorrectionZeroResultRow,
     HeatingCorrectionResultRow,
-    HeatingPositiveCorrectionExcessiveInstallmentResultRow,
+    HeatingPositiveCorrectionExcessiveReaccuralResultRow,
     HeatingPositiveCorrectionResultRow,
     HeatingResultRow,
     ResultFile,
@@ -504,6 +504,7 @@ class RegionDir:
                 )
                 self.results.add_row(row)
                 if month_num == account_closing_month:
+                    last_total_future_installment = total_future_installment
                     total_future_installment = Decimal("0.00")
                     future_installment = None
                     total_closing_balance = (
@@ -520,16 +521,25 @@ class RegionDir:
                         total_future_installment,
                     )
                     self.results.add_row(row)
-                    # if total_future_installment < 0:
-                    #     row = HeatingPositiveCorrectionExcessiveInstallmentResultRow(
-                    #         self.osv_file.date,
-                    #         self.osv.address_record,
-                    #         correction_date,
-                    #         abs(total_future_installment),
-                    #         service,
-                    #     )
-                    #     self.results.add_row(row)
-                    #     total_future_installment = 0
+                    next_month_reaccural = Decimal(
+                        self.account_details.get_service_month_reaccural(
+                            MonthYear(month_num + 1, self.osv_file.date.year),
+                            service,
+                        )
+                    ).quantize(Decimal("0.01"))
+                    excessive_reaccural = (
+                        next_month_reaccural - last_total_future_installment
+                    )
+                    correction_date = MonthYear(month_num, correction.current_year)
+                    if excessive_reaccural:
+                        row = HeatingPositiveCorrectionExcessiveReaccuralResultRow(
+                            correction_date.next,
+                            self.osv.address_record,
+                            correction_date,
+                            excessive_reaccural,
+                            service,
+                        )
+                        self.results.add_row(row)
                     break
         else:
             correction_date = self.osv_file.date
