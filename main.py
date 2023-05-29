@@ -81,10 +81,6 @@ class RegionDir:
         self.conf = {k: v.strip() for k, v in conf.items()}
         self.base_dir = base_dir
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
-        self.heating_yearly_correction_dates = [
-            MonthYear(*[int(x) for x in reversed(date.split("-"))])
-            for date in self.conf["heating.yearly_corrections_dates"].split(",")
-        ]
         self.odpus = AddressFile(
             os.path.join(self.base_dir, conf["file.odpu_address"]),
             self.conf,
