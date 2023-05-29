@@ -1,5 +1,6 @@
 "Base class to work with adress-formatted Excel tables"
 
+from dataclasses import dataclass
 import logging
 import string
 
@@ -9,6 +10,17 @@ from lib.helpers import BaseWorkBook, ExcelHelpers
 
 SheetDataFormatted = list[str]
 SheetDataRaw = list[tuple[str]]
+
+
+@dataclass
+class BuildingRecord:
+    "Record of Buildings table"
+    num: int
+    municipality: str
+    street: str
+    street_number: str
+    building: str
+    correction_month: int
 
 
 class AddressFile(BaseWorkBook):
@@ -42,6 +54,17 @@ class AddressFile(BaseWorkBook):
         if not formatted:
             logging.warning("Sheet %s seems empty!", sheet.title)
         return formatted, raw
+
+    def get_row_by_address(self, name: str, address: str) -> tuple[str]:
+        "Finds and returns row data for a given address in a giben sheet"
+        sheet_addresses = [f"{a}," for a in self.get_sheet_data_formatted(name)]
+        address = address.lower()
+        for counter, sheet_address in enumerate(sheet_addresses):
+            if sheet_address in address:
+                return self.get_sheet_data_raw(name)[counter]
+        raise ValueError(
+            f"Address '{address}' not found in sheet '{name}' of '{self.filename}'"
+        )
 
     def __init__(self, file_name: str, conf: dict) -> None:
         self.filename = file_name

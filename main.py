@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from os.path import basename
 from typing import Mapping
 
-from lib.addressfile import AddressFile
+from lib.addressfile import AddressFile, BuildingRecord
 from lib.datatypes import MonthYear
 from lib.detailsfile import (
     AccountDetailsFileSingleton,
@@ -74,6 +74,7 @@ class RegionDir:
     osv_file: OsvFile
     osv: OsvRecord
     account: str
+    building_record: BuildingRecord
 
     def __init__(self, base_dir: str, conf: Mapping[str, str]) -> None:
         logging.info("Initialazing %s region data...", base_dir)
@@ -390,8 +391,7 @@ class RegionDir:
 
     def _process_last_year_heating_correction(self):
         service = "Отопление"
-
-        if self.osv_file.date not in self.heating_yearly_correction_dates:
+        if self.osv_file.date.month != self.building_record.correction_month:
             return
         try:
             reaccural = self.account_details.get_service_month_reaccural(
@@ -614,6 +614,10 @@ class RegionDir:
                 ),
                 int(self.conf["account_details.header_row"]),
             )
+            building_row = self.buildings.get_row_by_address(
+                str(self.osv_file.date.year), self.osv.address_record.address
+            )
+            self.building_record = BuildingRecord(*building_row)
             self._process_heating_data()
             self._process_gvs_data()
             self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
