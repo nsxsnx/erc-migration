@@ -11,7 +11,8 @@ from decimal import Decimal
 from os.path import basename
 from typing import Mapping
 
-from lib.addressfile import AddressFile, BuildingRecord
+from lib.addressfile import AddressFile
+from lib.buildingsfile import BuildingRecord, BuildingsFile
 from lib.datatypes import MonthYear
 from lib.detailsfile import (
     AccountDetailsFileSingleton,
@@ -19,7 +20,7 @@ from lib.detailsfile import (
     GvsDetailsRecord,
 )
 from lib.errormessage import ErrorMessageConsoleHandler
-from lib.exceptions import NoServiceRow, ZeroDataResultRow
+from lib.exceptions import NoAddressRow, NoServiceRow, ZeroDataResultRow
 from lib.filledresultfile import AccountClosingBalance, FilledTableUpdater, GvsIpuMetric
 from lib.heatingcorrections import (
     HeatingCorrectionAccountStatus,
@@ -101,15 +102,17 @@ class RegionDir:
             self.heating_average.get_sheets_count(),
             self.heating_average.get_strings_count(),
         )
-        self.buildings = AddressFile(
-            os.path.join(self.base_dir, conf["file.building_address"]),
-            self.conf,
+        self.buildings: BuildingsFile = BuildingsFile(
+            os.path.join(self.base_dir, conf["file.buildings"]),
+            1,
+            BuildingRecord,
         )
         logging.info(
             "Read buildings: %s sheets, %s elements total",
             self.buildings.get_sheets_count(),
             self.buildings.get_strings_count(),
         )
+
         self.heating_corrections: HeatingCorrectionsFile = HeatingCorrectionsFile(
             os.path.join(self.base_dir, self.conf["file.heating_corrections"]),
             1,
@@ -192,10 +195,12 @@ class RegionDir:
         try:
             osv_address_rec = OsvAddressRecord.get_instance(address_cell)
             logging.debug("Address record %s understood as %s", row[0], osv_address_rec)
-            if not ExcelHelpers.is_address_in_list(
-                osv_address_rec.address,
-                self.buildings.get_sheet_data_formatted(str(self.osv_file.date.year)),
-            ):
+            try:
+                self.buildings.get_address_row(
+                    osv_address_rec.address,
+                    str(self.osv_file.date.year),
+                )
+            except NoAddressRow:
                 return None
             osv_accural_rec = OsvAccuralRecord(
                 float(row[column_index_data.heating]),
@@ -621,10 +626,10 @@ class RegionDir:
                     self.account,
                 )
                 continue
-            building_row = self.buildings.get_row_by_address(
-                str(self.osv_file.date.year), self.osv.address_record.address
+            self.building_record = self.buildings.get_address_row(
+                self.osv.address_record.address,
+                str(self.osv_file.date.year),
             )
-            self.building_record = BuildingRecord(*building_row)
             self._process_heating_data()
             self._process_gvs_data()
             self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)

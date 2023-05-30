@@ -1,4 +1,4 @@
-" Custom exceptions "
+"""Custom exceptions"""
 
 
 class NoServiceRow(Exception):
@@ -23,4 +23,10 @@ class ZeroServiceReacuralRow(Exception):
 class ZeroDataResultRow(Exception):
     """
     Raised when result row has only Zero values
+    """
+
+
+class NoAddressRow(Exception):
+    """
+    Raised when address is understood but not found in table
     """
