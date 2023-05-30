@@ -21,6 +21,7 @@ class BuildingRecord:
     street: str
     house: str
     building: str
+    has_odpu: str
     correction_month: int
     tariff_first: float
     tariff_second: float

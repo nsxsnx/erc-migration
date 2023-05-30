@@ -79,7 +79,7 @@ class HeatingResultRow(BaseResultRow):
         date: MonthYear,
         data: OsvAddressRecord,
         accural: OsvAccuralRecord,
-        odpu_file: AddressFile,
+        has_odpu: str,
         heating_average_file: AddressFile,
         account_details: AccountDetailsFileSingleton,
     ) -> None:
@@ -87,8 +87,6 @@ class HeatingResultRow(BaseResultRow):
         self.set_field(4, ResultRecordType.HEATING_ACCURAL.name)
         self.set_field(5, "Отопление")
         # chapter 2:
-        odpus = odpu_file.get_sheet_data_formatted(str(date.year))
-        has_odpu: bool = ExcelHelpers.is_address_in_list(data.address, odpus)
         if has_odpu:
             self.set_field(9, "Общедомовый")
             self.set_field(10, "01.01.2018")

@@ -84,15 +84,6 @@ class RegionDir:
         self.base_dir = base_dir
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
         self.error_handler = ErrorMessageConsoleHandler()
-        self.odpus = AddressFile(
-            os.path.join(self.base_dir, conf["file.odpu_address"]),
-            self.conf,
-        )
-        logging.info(
-            "Read ODPU address data: %s sheets, %s elements total",
-            self.odpus.get_sheets_count(),
-            self.odpus.get_strings_count(),
-        )
         self.heating_average = AddressFile(
             os.path.join(self.base_dir, conf["file.heating_average"]),
             self.conf,
@@ -238,7 +229,7 @@ class RegionDir:
                 self.osv_file.date,
                 self.osv.address_record,
                 self.osv.accural_record,
-                self.odpus,
+                self.building_record.has_odpu,
                 self.heating_average,
                 self.account_details,
             )
@@ -660,10 +651,6 @@ class RegionDir:
             pass
         try:
             self.heating_average.close()
-        except AttributeError:
-            pass
-        try:
-            self.odpus.close()
         except AttributeError:
             pass
         try:

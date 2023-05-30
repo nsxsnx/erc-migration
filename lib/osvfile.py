@@ -4,6 +4,7 @@ import logging
 import re
 import sys
 from dataclasses import dataclass
+from os.path import basename
 from typing import Self
 
 from openpyxl import load_workbook
@@ -80,7 +81,7 @@ class OsvFile(BaseWorkBook):
 
     def __init__(self, file: str, conf: dict) -> None:
         self.conf = conf
-        logging.info("Reading OSV file %s...", file)
+        logging.info("Reading OSV: %s...", basename(file))
         self.filename = file
         self.workbook = load_workbook(filename=file, data_only=True)
         self.sheet = self.workbook.active
