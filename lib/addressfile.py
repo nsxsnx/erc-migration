@@ -18,7 +18,7 @@ class BuildingRecord:
     num: int
     municipality: str
     street: str
-    street_number: str
+    house: str
     building: str
     correction_month: int
 
