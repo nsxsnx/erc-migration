@@ -1,12 +1,13 @@
-" Energobilling data calculation/formatting "
+"""Energobilling data calculation/formatting"""
+
 import calendar
 import configparser
-from decimal import Decimal
 import logging
 import os
 import re
 import sys
 from dataclasses import dataclass
+from decimal import Decimal
 from os.path import basename
 from typing import Mapping
 
@@ -17,13 +18,14 @@ from lib.detailsfile import (
     GvsDetailsFileSingleton,
     GvsDetailsRecord,
 )
+from lib.errormessage import ErrorMessageConsoleHandler
 from lib.exceptions import NoServiceRow, ZeroDataResultRow
 from lib.filledresultfile import AccountClosingBalance, FilledTableUpdater, GvsIpuMetric
 from lib.heatingcorrections import (
+    HeatingCorrectionAccountStatus,
     HeatingCorrectionRecord,
     HeatingCorrectionsFile,
     HeatingPositiveCorrection,
-    HeatingCorrectionAccountStatus,
     HeatingVolumesOdpuFile,
     HeatingVolumesOdpuRecord,
 )
@@ -43,15 +45,14 @@ from lib.resultfile import (
     GvsMultipleResultSecondRow,
     GvsReaccuralResultRow,
     GvsSingleResultRow,
-    HeatingNegativeCorrectionZeroResultRow,
     HeatingCorrectionResultRow,
+    HeatingNegativeCorrectionZeroResultRow,
     HeatingPositiveCorrectionExcessiveReaccuralResultRow,
     HeatingPositiveCorrectionResultRow,
     HeatingResultRow,
     ResultFile,
     ResultRecordType,
 )
-
 
 CONFIG_PATH = "./config.ini"
 
@@ -81,6 +82,7 @@ class RegionDir:
         self.conf = {k: v.strip() for k, v in conf.items()}
         self.base_dir = base_dir
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
+        self.error_handler = ErrorMessageConsoleHandler()
         self.odpus = AddressFile(
             os.path.join(self.base_dir, conf["file.odpu_address"]),
             self.conf,
@@ -431,17 +433,17 @@ class RegionDir:
             if not correction_sum:
                 continue
             correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
-            odpu_records: HeatingVolumesOdpuRecord = (
-                self.heating_volumes_odpu.as_filtered_list(
-                    ("street", "house"),
-                    (correction_record.street, correction_record.house),
-                    f"{correction_date.year}",
-                )
+            odpu_records: list[
+                HeatingVolumesOdpuRecord
+            ] = self.heating_volumes_odpu.as_filtered_list(
+                ("street", "house"),
+                (correction_record.street, correction_record.house),
+                f"{correction_date.year}",
             )
             if len(odpu_records) != 1:
                 raise ValueError(
-                    f"Can't correctly determine address for last year correction: \
-                    {correction_record.street} {correction_record.house}"
+                    "Can't correctly determine an address for the last year correction: "
+                    f"{correction_record.street} {correction_record.house}"
                 )
             odpu_volume = getattr(odpu_records[0], month_abbr)
             row = HeatingCorrectionResultRow(
@@ -601,15 +603,24 @@ class RegionDir:
             if not self._is_debugging_current_account():
                 continue
             self.account = self.osv.address_record.account
-            self.account_details = AccountDetailsFileSingleton(
-                self.account,
-                os.path.join(
-                    self.base_dir,
-                    self.conf["account_details.dir"],
-                    f"{self.osv.address_record.account}.xlsx",
-                ),
-                int(self.conf["account_details.header_row"]),
-            )
+            try:
+                self.account_details = AccountDetailsFileSingleton(
+                    self.account,
+                    os.path.join(
+                        self.base_dir,
+                        self.conf["account_details.dir"],
+                        f"{self.osv.address_record.account}.xlsx",
+                    ),
+                    int(self.conf["account_details.header_row"]),
+                )
+            except FileNotFoundError:
+                self.error_handler.show(
+                    "no_account_details",
+                    self.account,
+                    "Account details file not found: %s",
+                    self.account,
+                )
+                continue
             building_row = self.buildings.get_row_by_address(
                 str(self.osv_file.date.year), self.osv.address_record.address
             )
