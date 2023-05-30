@@ -7,6 +7,8 @@ from lib.datatypes import MonthYear
 class HeatingTariff(float, Enum):
     """Heating prices for different periods"""
 
+    T2019_1 = 3_457.63
+    T2019_2 = 3_457.63
     T2020_1 = 3_276.63
     T2020_2 = 3_276.63
     T2021_1 = 3_276.63
@@ -18,6 +20,11 @@ class HeatingTariff(float, Enum):
     def get_tariff(cls, date: MonthYear):
         """Returns tariff for a particulat month/year"""
         match date.year:
+            case 2019:
+                if date.month < 7:
+                    return HeatingTariff.T2019_1
+                else:
+                    return HeatingTariff.T2019_2
             case 2020:
                 if date.month < 7:
                     return HeatingTariff.T2020_1
