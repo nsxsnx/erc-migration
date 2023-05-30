@@ -12,7 +12,7 @@ from lib.datatypes import MonthYear
 from lib.helpers import BaseWorkBook
 
 OSVDATA_REGEXP = [
-    r"^(?P<type>Частная|Муниципальная|Служебная|Общежитие|"
+    r"^(?P<type>Частная|Муниципальная|Служебная|Общежитие|Частная без регистр.|"
     r"Собственн.юридич.лиц|Арендуемая|Маневренный фонд|Приватизированная|),"
     r"(?P<account>\d{12}),"
     r"((?P<name>.*);)?"
