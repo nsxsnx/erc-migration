@@ -3,6 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
+from lib.datatypes import MonthYear
 
 from lib.exceptions import NoAddressRow
 from lib.helpers import BaseMultisheetWorkBookData
@@ -25,7 +26,7 @@ class BuildingRecord:
     correction_month: int
     tariff_first: float
     tariff_second: float
-    koefficient: float
+    coefficient: float
 
 
 class BuildingsFile(BaseMultisheetWorkBookData):
@@ -54,3 +55,9 @@ class BuildingsFile(BaseMultisheetWorkBookData):
                 sheet_name,
             )
         return rows[0]
+
+    def get_tariff(self, address: str, date: MonthYear):
+        "Returns tariff for a given address on a given date"
+        row: BuildingRecord = self.get_address_row(address, str(date.year))
+        tariff = row.tariff_first if date.month < 7 else row.tariff_second
+        return tariff * row.coefficient

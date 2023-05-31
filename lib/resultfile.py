@@ -10,13 +10,13 @@ from typing import Any
 from openpyxl import load_workbook
 
 from lib.addressfile import AddressFile
+from lib.buildingsfile import BuildingsFile
 from lib.datatypes import MonthYear
 from lib.detailsfile import AccountDetailsFileSingleton, GvsDetailsRecord
 from lib.exceptions import NoServiceRow, ZeroDataResultRow
 from lib.helpers import BaseWorkBook, ExcelHelpers
 from lib.osvfile import OsvAccuralRecord, OsvAddressRecord
 from lib.reaccural import ReaccuralType
-from lib.tariffs import HeatingTariff
 
 GvsIpuInstallDates: dict[str, str] = {}
 
@@ -51,6 +51,7 @@ class BaseResultRow:
         self,
         date: MonthYear,
         data: OsvAddressRecord,
+        buildings: BuildingsFile,
     ) -> None:
         for ind in range(self.MAX_FIELDS):
             setattr(self, f"f{ind:02d}", None)
@@ -60,7 +61,7 @@ class BaseResultRow:
         self.set_field(3, data.address)
         self.set_field(6, date.month)
         self.set_field(7, date.year)
-        self.price = HeatingTariff.get_tariff(date)
+        self.price = buildings.get_tariff(data.address, date)
         self.set_field(8, self.price)
 
     def as_list(self) -> list[Any]:
@@ -82,8 +83,9 @@ class HeatingResultRow(BaseResultRow):
         has_odpu: str,
         heating_average_file: AddressFile,
         account_details: AccountDetailsFileSingleton,
+        buildings: BuildingsFile,
     ) -> None:
-        super().__init__(date, data)
+        super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.HEATING_ACCURAL.name)
         self.set_field(5, "Отопление")
         # chapter 2:
@@ -104,7 +106,6 @@ class HeatingResultRow(BaseResultRow):
         has_heating_average: bool = ExcelHelpers.is_address_in_list(
             data.address, heating_averages
         )
-        # price = HeatingTariff.get_tariff(date)
         if has_odpu and has_heating_average:
             quantity = quantity_average = f"{float(accural.heating) / self.price:.4f}"
             sum_average = accural.heating
@@ -150,9 +151,10 @@ class GvsSingleResultRow(BaseResultRow):
         accural: OsvAccuralRecord,
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
+        buildings: BuildingsFile,
         service: str = "Тепловая энергия для подогрева воды",
     ) -> None:
-        super().__init__(date, data)
+        super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.GVS_ACCURAL.name)
         self.set_field(5, service)
         # chapter 3:
@@ -226,8 +228,11 @@ class GvsMultipleResultFirstRow(GvsSingleResultRow):
         accural: OsvAccuralRecord,
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
+        buildings: BuildingsFile,
     ) -> None:
-        super().__init__(date, data, accural, account_details, gvs_details_row)
+        super().__init__(
+            date, data, accural, account_details, gvs_details_row, buildings
+        )
         gvs = gvs_details_row
         if gvs.metric_current is not None:
             self.set_field(20, "При снятии прибора")
@@ -246,8 +251,11 @@ class GvsMultipleResultSecondRow(GvsSingleResultRow):
         accural: OsvAccuralRecord,
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
+        buildings: BuildingsFile,
     ) -> None:
-        super().__init__(date, data, accural, account_details, gvs_details_row)
+        super().__init__(
+            date, data, accural, account_details, gvs_details_row, buildings
+        )
         gvs = gvs_details_row
         self.set_field(10, gvs.metric_date_current)
         GvsIpuInstallDates[gvs.account] = gvs.metric_date_current
@@ -268,10 +276,11 @@ class GvsReaccuralResultRow(BaseResultRow):
         reaccural_date: MonthYear,
         reaccural_sum: float,
         reaccural_type: ReaccuralType,
+        buildings: BuildingsFile,
         service,
         record_type,
     ) -> None:
-        super().__init__(date, data)
+        super().__init__(date, data, buildings)
         self.set_field(4, record_type.name)
         self.set_field(5, service)
         # chapter 2:
@@ -324,9 +333,12 @@ class GvsElevatedResultRow(GvsSingleResultRow):
         accural: OsvAccuralRecord,
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
+        buildings: BuildingsFile,
         service: str,
     ) -> None:
-        super().__init__(date, data, accural, account_details, gvs_details_row, service)
+        super().__init__(
+            date, data, accural, account_details, gvs_details_row, buildings, service
+        )
         self.set_field(4, ResultRecordType.GVS_ELEVATED.name)
         self.set_field(5, service)
         # chapter 3:
@@ -383,13 +395,14 @@ class HeatingCorrectionResultRow(BaseResultRow):
         correction_volume: float,
         odpu_volume: float,
         service: str,
+        buildings: BuildingsFile,
     ) -> None:
-        super().__init__(date, data)
+        super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.HEATING_CORRECTION.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
-        self.price = HeatingTariff.get_tariff(correction_date)
+        self.price = buildings.get_tariff(data.address, correction_date)
         self.set_field(8, self.price)
         self.set_field(9, "Общедомовый")
         self.set_field(10, "01.01.2018")
@@ -419,13 +432,14 @@ class HeatingNegativeCorrectionZeroResultRow(BaseResultRow):
         correction_date: MonthYear,
         account_details: AccountDetailsFileSingleton,
         service: str,
+        buildings: BuildingsFile,
     ) -> None:
-        super().__init__(date, data)
+        super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.HEATING_CORRECTION_ZERO.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
-        self.price = HeatingTariff.get_tariff(correction_date)
+        self.price = buildings.get_tariff(data.address, correction_date)
         self.set_field(8, self.price)
         self.set_field(9, "Общедомовый")
         self.set_field(10, "01.01.2018")
@@ -453,14 +467,15 @@ class HeatingPositiveCorrectionResultRow(BaseResultRow):
         future_installment: Decimal | None,
         total_closing_balance: Decimal,
         total_future_installment: Decimal,
+        buildings: BuildingsFile,
     ) -> None:
-        super().__init__(date, data)
+        super().__init__(date, data, buildings)
         self.set_field(0, correction_date.month)
         self.set_field(4, ResultRecordType.HEATING_POSITIVE_CORRECTION.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
-        self.price = Decimal(HeatingTariff.get_tariff(correction_date))
+        self.price = Decimal(buildings.get_tariff(data.address, correction_date))
         self.set_field(8, self.price)
         self.set_field(9, "Общедомовый")
         self.set_field(10, "01.01.2018")
@@ -487,15 +502,16 @@ class HeatingPositiveCorrectionExcessiveReaccuralResultRow(BaseResultRow):
         correction_date: MonthYear,
         accural_sum: Decimal,
         service: str,
+        buildings: BuildingsFile,
     ) -> None:
-        super().__init__(date, data)
+        super().__init__(date, data, buildings)
         self.set_field(
             4, ResultRecordType.HEATING_POSITIVE_CORRECTION_EXCESSIVE_REACCURAL.name
         )
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
-        self.price = Decimal(HeatingTariff.get_tariff(correction_date))
+        self.price = Decimal(buildings.get_tariff(data.address, correction_date))
         self.set_field(8, self.price)
         self.set_field(9, "Общедомовый")
         self.set_field(10, "01.01.2018")

@@ -232,6 +232,7 @@ class RegionDir:
                 self.building_record.has_odpu,
                 self.heating_average,
                 self.account_details,
+                self.buildings,
             )
             self.results.add_row(heating_row)
         except NoServiceRow:
@@ -275,6 +276,7 @@ class RegionDir:
                     self.osv.accural_record,
                     self.account_details,
                     gvs_details_rows[0],
+                    self.buildings,
                 )
                 self.results.add_row(gvs_row)
             case 2:
@@ -286,6 +288,7 @@ class RegionDir:
                             self.osv.accural_record,
                             self.account_details,
                             gvs_details_row,
+                            self.buildings,
                         )
                     else:
                         gvs_row = GvsMultipleResultSecondRow(
@@ -294,6 +297,7 @@ class RegionDir:
                             self.osv.accural_record,
                             self.account_details,
                             gvs_details_row,
+                            self.buildings,
                         )
                     self.results.add_row(gvs_row)
 
@@ -345,6 +349,7 @@ class RegionDir:
                 rec.date,
                 rec.sum,
                 reaccural_details.type,
+                self.buildings,
                 service,
                 record_type,
             )
@@ -377,6 +382,7 @@ class RegionDir:
                 self.osv.accural_record,
                 self.account_details,
                 gvs_details_rows[0],
+                self.buildings,
                 service,
             )
             self.results.add_row(row)
@@ -450,6 +456,7 @@ class RegionDir:
                 correction_volume,
                 odpu_volume,
                 service,
+                self.buildings,
             )
             self.results.add_row(row)
         if is_positive_correction:
@@ -495,6 +502,7 @@ class RegionDir:
                     future_installment,
                     total_closing_balance,
                     total_future_installment,
+                    self.buildings,
                 )
                 self.results.add_row(row)
                 if month_num == account_closing_month:
@@ -513,6 +521,7 @@ class RegionDir:
                         future_installment,
                         total_closing_balance,
                         total_future_installment,
+                        self.buildings,
                     )
                     self.results.add_row(row)
                     next_month_reaccural = Decimal(
@@ -532,6 +541,7 @@ class RegionDir:
                             correction_date,
                             excessive_reaccural,
                             service,
+                            self.buildings,
                         )
                         self.results.add_row(row)
                     break
@@ -548,6 +558,7 @@ class RegionDir:
                 future_installment,
                 total_closing_balance,
                 total_future_installment,
+                self.buildings,
             )
             self.results.add_row(row)
 
@@ -584,6 +595,7 @@ class RegionDir:
                     correction_date,
                     self.account_details,
                     service,
+                    self.buildings,
                 )
                 self.results.add_row(row)
 
