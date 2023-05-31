@@ -241,12 +241,14 @@ class RegionDir:
     def _process_gvs_data(self):
         if not any(
             (
+                self.osv.accural_record.heating,
                 self.osv.accural_record.gvs,
                 self.osv.accural_record.reaccural,
                 self.osv.accural_record.payment,
             )
         ):
             return
+        service = "Тепловая энергия для подогрева воды"
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -268,7 +270,25 @@ class RegionDir:
             )
         match len(gvs_details_rows):
             case 0:
-                pass
+                try:
+                    closing_balance = (
+                        self.account_details.get_service_month_closing_balance(
+                            self.osv_file.date, service
+                        )
+                    )
+                except NoServiceRow:
+                    closing_balance = 0.0
+                if closing_balance:
+                    gvs_row = GvsSingleResultRow(
+                        self.osv_file.date,
+                        self.osv.address_record,
+                        self.osv.accural_record,
+                        self.account_details,
+                        GvsDetailsRecord.get_dummy_instance(),
+                        self.buildings,
+                        service,
+                    )
+                    self.results.add_row(gvs_row)
             case 1:
                 gvs_row = GvsSingleResultRow(
                     self.osv_file.date,
@@ -277,6 +297,7 @@ class RegionDir:
                     self.account_details,
                     gvs_details_rows[0],
                     self.buildings,
+                    service,
                 )
                 self.results.add_row(gvs_row)
             case 2:
@@ -289,6 +310,7 @@ class RegionDir:
                             self.account_details,
                             gvs_details_row,
                             self.buildings,
+                            service,
                         )
                     else:
                         gvs_row = GvsMultipleResultSecondRow(
@@ -298,6 +320,7 @@ class RegionDir:
                             self.account_details,
                             gvs_details_row,
                             self.buildings,
+                            service,
                         )
                     self.results.add_row(gvs_row)
 
@@ -694,6 +717,7 @@ if __name__ == "__main__":
                 region.close()
             except NameError:
                 pass
+        sys.exit(0)
         result_file_name = os.path.join(
             config["DEFAULT"]["base_dir"],
             section,

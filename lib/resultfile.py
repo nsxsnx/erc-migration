@@ -152,7 +152,7 @@ class GvsSingleResultRow(BaseResultRow):
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
         buildings: BuildingsFile,
-        service: str = "Тепловая энергия для подогрева воды",
+        service: str,
     ) -> None:
         super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.GVS_ACCURAL.name)
@@ -229,9 +229,10 @@ class GvsMultipleResultFirstRow(GvsSingleResultRow):
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
         buildings: BuildingsFile,
+        service: str,
     ) -> None:
         super().__init__(
-            date, data, accural, account_details, gvs_details_row, buildings
+            date, data, accural, account_details, gvs_details_row, buildings, service
         )
         gvs = gvs_details_row
         if gvs.metric_current is not None:
@@ -252,9 +253,10 @@ class GvsMultipleResultSecondRow(GvsSingleResultRow):
         account_details: AccountDetailsFileSingleton,
         gvs_details_row: GvsDetailsRecord,
         buildings: BuildingsFile,
+        service: str,
     ) -> None:
         super().__init__(
-            date, data, accural, account_details, gvs_details_row, buildings
+            date, data, accural, account_details, gvs_details_row, buildings, service
         )
         gvs = gvs_details_row
         self.set_field(10, gvs.metric_date_current)
