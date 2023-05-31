@@ -50,7 +50,7 @@ class Reaccural:
             try:
                 prev_accural = Decimal(
                     self.account_data.get_service_month_accural(
-                        date := date.previous, self.serivce
+                        date := date.previous, self.service
                     )
                 ).quantize(Decimal("0.01"))
             except NoServiceRow:
@@ -75,12 +75,12 @@ class Reaccural:
             try:
                 prev_accural = Decimal(
                     self.account_data.get_service_month_accural(
-                        date := date.previous, self.serivce
+                        date := date.previous, self.service
                     )
                 ).quantize(Decimal("0.01"))
                 second_prev_accural = Decimal(
                     self.account_data.get_service_month_accural(
-                        date.previous, self.serivce
+                        date.previous, self.service
                     )
                 ).quantize(Decimal("0.01"))
             except NoServiceRow:
@@ -98,7 +98,7 @@ class Reaccural:
         self.type = p_type
 
     def init_type(self, gvs_dir: str, header_row: int):
-        "get type of Reaccural based on the data of a previous GVS file"
+        "Get type of Reaccural based on the data of a previous GVS file"
         prev_date = self.date.previous
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
@@ -133,14 +133,14 @@ class Reaccural:
         self.valid = False
         self.records = []
         self.account_data = account_details
-        self.serivce = service
+        self.service = service
         self.try_decompose_to_zero()
         if self.valid:
             return
         try:
             next_month_accural = Decimal(
                 self.account_data.get_service_month_accural(
-                    self.date.next, self.serivce
+                    self.date.next, self.service
                 )
             )
             if not next_month_accural:
@@ -151,3 +151,6 @@ class Reaccural:
             self.try_decompose_to_previous_accurance()
         if not self.valid:
             self.records.append(ReaccuralMonthRec(reaccural_date, reaccural_sum))
+        if self.valid and self.totalsum < Decimal("0.00"):
+            for rec in self.records:
+                rec.sum = -rec.sum
