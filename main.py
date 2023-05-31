@@ -717,7 +717,6 @@ if __name__ == "__main__":
                 region.close()
             except NameError:
                 pass
-        sys.exit(0)
         result_file_name = os.path.join(
             config["DEFAULT"]["base_dir"],
             section,

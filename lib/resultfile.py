@@ -387,6 +387,7 @@ class GvsElevatedResultRow(GvsSingleResultRow):
 
 class HeatingCorrectionResultRow(BaseResultRow):
     "Result row for heating last-year correction"
+    rounding_error: list = [0.0]
 
     def __init__(
         self,
@@ -417,7 +418,19 @@ class HeatingCorrectionResultRow(BaseResultRow):
         self.set_field(19, f"23.{correction_date.month:02d}.{correction_date.year}")
         self.set_field(20, "Контрольное")
         self.set_field(22, odpu_volume)
-        accural_sum = round(correction_volume * self.price - correction_sum, 2)
+        # accural_sum = round(correction_volume * self.price - correction_sum, 2)
+        #
+        # loosing some penny because of rounding
+        # compensate for it:
+        accural_sum = correction_volume * self.price - correction_sum
+        accural_sum_rounded = round(accural_sum, 2)
+        self.rounding_error[0] += accural_sum - accural_sum_rounded
+        HALF_PENNY = 0.005  # pylint: disable=C0103
+        if abs(self.rounding_error[0]) >= HALF_PENNY:
+            SIGNED_PENNY = round(self.rounding_error[0], 2)  # pylint: disable=C0103
+            accural_sum_rounded += SIGNED_PENNY
+            self.rounding_error[0] -= SIGNED_PENNY
+        accural_sum = accural_sum_rounded
         self.set_field(24, accural_sum)
         self.set_field(25, accural_sum)
         self.set_field(36, accural_sum)
