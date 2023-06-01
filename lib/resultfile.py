@@ -107,7 +107,8 @@ class HeatingResultRow(BaseResultRow):
             data.address, heating_averages
         )
         if has_odpu and has_heating_average:
-            quantity = quantity_average = f"{float(accural.heating) / self.price:.4f}"
+            quantity = f"{float(accural.heating) / self.price:.4f}".replace(".", ",")
+            quantity_average = quantity
             sum_average = accural.heating
             self.set_field(26, quantity_average)
             self.set_field(27, sum_average)
@@ -115,7 +116,8 @@ class HeatingResultRow(BaseResultRow):
         else:
             # chapter 4:
             self.set_field(30, data.population)
-            quantity = quantity_normative = f"{accural.heating / self.price:.4f}"
+            quantity = f"{accural.heating / self.price:.4f}".replace(".", ",")
+            quantity_normative = quantity
             sum_normative = accural.heating
             self.set_field(31, quantity_normative)
             self.set_field(32, sum_normative)
@@ -175,7 +177,7 @@ class GvsSingleResultRow(BaseResultRow):
                 self.set_field(21, gvs.metric_current)
             self.set_field(22, gvs.consumption_ipu)
         # chapter 5:
-        quantity = f"{accural.gvs/self.price:.4f}"
+        quantity = f"{accural.gvs/self.price:.4f}".replace(".", ",")
         if gvs.consumption_ipu:
             self.set_field(23, quantity)
             self.set_field(24, accural.gvs)
@@ -302,7 +304,7 @@ class GvsReaccuralResultRow(BaseResultRow):
             self.set_field(14, gvs.counter_number)
             self.set_field(15, 6)
             self.set_field(16, 3)
-        quantity = f"{reaccural_sum/self.price:.4f}"
+        quantity = f"{reaccural_sum/self.price:.4f}".replace(".", ",")
         # chapter 5: same as chapter 7 of GvsSingleResultRow
         match reaccural_type:
             case ReaccuralType.IPU:
@@ -355,7 +357,7 @@ class GvsElevatedResultRow(GvsSingleResultRow):
             accural_sum = account_details.get_service_month_accural(date, service)
         except NoServiceRow:
             accural_sum = 0
-        quantity = f"{accural_sum/self.price:.4f}"
+        quantity = f"{accural_sum/self.price:.4f}".replace(".", ",")
         if gvs.consumption_ipu:
             self.set_field(23, quantity)
             self.set_field(24, accural_sum)
@@ -536,7 +538,7 @@ class HeatingPositiveCorrectionExcessiveReaccuralResultRow(BaseResultRow):
         self.set_field(14, 1)
         self.set_field(15, 6)
         self.set_field(16, 3)
-        quantity = f"{accural_sum / self.price:.4f}"
+        quantity = f"{accural_sum / self.price:.4f}".replace(".", ",")
         self.set_field(23, quantity)
         self.set_field(24, accural_sum)
         self.set_field(25, accural_sum)
