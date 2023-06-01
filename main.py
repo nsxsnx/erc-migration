@@ -413,10 +413,10 @@ class RegionDir:
         except (NoServiceRow, ZeroDataResultRow):
             pass
 
-    def _create_heating_reaccural_record(self, correction_sum):
+    def _create_heating_reaccural_record(self, correction_date, correction_sum):
         service = "Отопление"
         row = HeatingReaccuralResultRow(
-            self.osv_file.date,
+            correction_date,
             self.osv.address_record,
             self.buildings,
             self.building_record.has_odpu,
@@ -472,7 +472,7 @@ class RegionDir:
             if not correction_sum:
                 continue
             if correction_sum < 0:
-                self._create_heating_reaccural_record(correction_sum)
+                self._create_heating_reaccural_record(correction_date, correction_sum)
             correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
             odpu_records: list[
                 HeatingVolumesOdpuRecord
@@ -500,7 +500,6 @@ class RegionDir:
             self.results.add_row(row)
         if is_positive_correction:
             self._add_future_installment_records(service)
-        if not is_positive_correction:
             self._add_closing_balance_records(service)
 
     def _add_future_installment_records(self, service):

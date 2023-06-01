@@ -52,6 +52,7 @@ class BaseResultRow:
         date: MonthYear,
         data: OsvAddressRecord,
         buildings: BuildingsFile,
+        use_reduction_factor: bool = False,
     ) -> None:
         for ind in range(self.MAX_FIELDS):
             setattr(self, f"f{ind:02d}", None)
@@ -61,7 +62,7 @@ class BaseResultRow:
         self.set_field(3, data.address)
         self.set_field(6, date.month)
         self.set_field(7, date.year)
-        self.price = buildings.get_tariff(data.address, date)
+        self.price = buildings.get_tariff(data.address, date, use_reduction_factor)
         self.set_field(8, self.price)
 
     def as_list(self) -> list[Any]:
@@ -155,6 +156,8 @@ class HeatingReaccuralResultRow(BaseResultRow):
         super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.HEATING_REACCURAL.name)
         self.set_field(5, service)
+        self.set_field(6, date.previous.month)
+        self.set_field(7, date.previous.year)
         if has_odpu:
             self.set_field(9, "Общедомовый")
             self.set_field(10, "01.01.2018")
@@ -211,7 +214,7 @@ class GvsSingleResultRow(BaseResultRow):
         buildings: BuildingsFile,
         service: str,
     ) -> None:
-        super().__init__(date, data, buildings)
+        super().__init__(date, data, buildings, use_reduction_factor=True)
         self.set_field(4, ResultRecordType.GVS_ACCURAL.name)
         self.set_field(5, service)
         # chapter 3:
@@ -339,7 +342,7 @@ class GvsReaccuralResultRow(BaseResultRow):
         service,
         record_type,
     ) -> None:
-        super().__init__(date, data, buildings)
+        super().__init__(date, data, buildings, use_reduction_factor=True)
         self.set_field(4, record_type.name)
         self.set_field(5, service)
         # chapter 2:
