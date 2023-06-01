@@ -56,7 +56,9 @@ class BuildingsFile(BaseMultisheetWorkBookData):
             )
         return rows[0]
 
-    def get_tariff(self, address: str, date: MonthYear, use_reduction_factor: bool):
+    def get_tariff(
+        self, address: str, date: MonthYear, use_reduction_factor: bool = False
+    ):
         "Returns tariff for a given address on a given date"
         row: BuildingRecord = self.get_address_row(address, str(date.year))
         tariff = row.tariff_first if date.month < 7 else row.tariff_second
