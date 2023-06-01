@@ -139,6 +139,61 @@ class HeatingResultRow(BaseResultRow):
         )
 
 
+class HeatingReaccuralResultRow(BaseResultRow):
+    "Result row for heating reaccural"
+
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        buildings: BuildingsFile,
+        has_odpu: str,
+        heating_average_file: AddressFile,
+        accural_sum: float,
+        service,
+    ) -> None:
+        super().__init__(date, data, buildings)
+        self.set_field(4, ResultRecordType.HEATING_REACCURAL.name)
+        self.set_field(5, service)
+        if has_odpu:
+            self.set_field(9, "Общедомовый")
+            self.set_field(10, "01.01.2018")
+            self.set_field(11, "Подвал")
+            self.set_field(12, 1)
+            self.set_field(13, "ВКТ-5")
+            self.set_field(14, 1)
+            self.set_field(15, 6)
+            self.set_field(16, 3)
+        # chapter 3:
+        heating_averages = heating_average_file.get_sheet_data_formatted(str(date.year))
+        # 'data_formatted' is used here instead of 'data_raw', because
+        # value of heating average is not required in result table,
+        # we only need address of the building to know that heating average was calculated
+        has_heating_average: bool = ExcelHelpers.is_address_in_list(
+            data.address, heating_averages
+        )
+        if has_odpu and has_heating_average:
+            quantity = f"{float(accural_sum) / self.price:.4f}".replace(".", ",")
+            quantity_average = quantity
+            sum_average = accural_sum
+            self.set_field(26, quantity_average)
+            self.set_field(27, sum_average)
+            self.set_field(28, sum_average)
+        else:
+            # chapter 4:
+            self.set_field(30, data.population)
+            quantity = f"{accural_sum / self.price:.4f}".replace(".", ",")
+            quantity_normative = quantity
+            sum_normative = accural_sum
+            self.set_field(31, quantity_normative)
+            self.set_field(32, sum_normative)
+            self.set_field(33, sum_normative)
+        # chapter 5:
+        self.set_field(35, quantity)
+        self.set_field(36, accural_sum)
+        self.set_field(37, accural_sum)
+
+
 class GvsSingleResultRow(BaseResultRow):
     "Result row for GVS service for cases where there is only one GVS details record"
 

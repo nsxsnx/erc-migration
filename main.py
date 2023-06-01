@@ -50,6 +50,7 @@ from lib.resultfile import (
     HeatingNegativeCorrectionZeroResultRow,
     HeatingPositiveCorrectionExcessiveReaccuralResultRow,
     HeatingPositiveCorrectionResultRow,
+    HeatingReaccuralResultRow,
     HeatingResultRow,
     ResultFile,
     ResultRecordType,
@@ -215,7 +216,7 @@ class RegionDir:
             return True
         return False
 
-    def _process_heating_data(self):
+    def _process_heating(self):
         if not any(
             (
                 self.osv.accural_record.heating,
@@ -238,7 +239,7 @@ class RegionDir:
         except NoServiceRow:
             pass
 
-    def _process_gvs_data(self):
+    def _process_gvs(self):
         if not any(
             (
                 self.osv.accural_record.heating,
@@ -324,7 +325,7 @@ class RegionDir:
                         )
                     self.results.add_row(gvs_row)
 
-    def _process_gvs_reaccural_data(self, record_type: ResultRecordType):
+    def _process_gvs_reaccural(self, record_type: ResultRecordType):
         match record_type:
             case ResultRecordType.GVS_REACCURAL:
                 service = "Тепловая энергия для подогрева воды"
@@ -382,7 +383,7 @@ class RegionDir:
                 )
             self.results.add_row(gvs_reaccural_row)
 
-    def _process_gvs_elevated_data(self):
+    def _process_gvs_elevated(self):
         service = "Тепловая энергия для подогрева воды (повышенный %)"
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
@@ -412,7 +413,20 @@ class RegionDir:
         except (NoServiceRow, ZeroDataResultRow):
             pass
 
-    def _process_last_year_heating_correction(self):
+    def _create_heating_reaccural_record(self, correction_sum):
+        service = "Отопление"
+        row = HeatingReaccuralResultRow(
+            self.osv_file.date,
+            self.osv.address_record,
+            self.buildings,
+            self.building_record.has_odpu,
+            self.heating_average,
+            correction_sum,
+            service,
+        )
+        self.results.add_row(row)
+
+    def _process_heating_correction(self):
         service = "Отопление"
         if self.osv_file.date.month != self.building_record.correction_month:
             return
@@ -457,6 +471,8 @@ class RegionDir:
             correction_date = MonthYear(month_num, self.osv_file.date.year - 1)
             if not correction_sum:
                 continue
+            if correction_sum < 0:
+                self._create_heating_reaccural_record(correction_sum)
             correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
             odpu_records: list[
                 HeatingVolumesOdpuRecord
@@ -656,12 +672,12 @@ class RegionDir:
                 self.osv.address_record.address,
                 str(self.osv_file.date.year),
             )
-            self._process_heating_data()
-            self._process_gvs_data()
-            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL)
-            self._process_gvs_elevated_data()
-            self._process_gvs_reaccural_data(ResultRecordType.GVS_REACCURAL_ELEVATED)
-            self._process_last_year_heating_correction()
+            self._process_heating()
+            self._process_gvs()
+            self._process_gvs_reaccural(ResultRecordType.GVS_REACCURAL)
+            self._process_gvs_elevated()
+            self._process_gvs_reaccural(ResultRecordType.GVS_REACCURAL_ELEVATED)
+            self._process_heating_correction()
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
