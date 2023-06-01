@@ -23,6 +23,7 @@ class BuildingRecord:
     house: str
     building: str
     has_odpu: str
+    has_heating_average: str
     correction_month: int
     tariff_first: float
     tariff_second: float

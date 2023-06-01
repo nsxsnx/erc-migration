@@ -9,12 +9,11 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from lib.addressfile import AddressFile
-from lib.buildingsfile import BuildingsFile
+from lib.buildingsfile import BuildingRecord, BuildingsFile
 from lib.datatypes import MonthYear
 from lib.detailsfile import AccountDetailsFileSingleton, GvsDetailsRecord
 from lib.exceptions import NoServiceRow, ZeroDataResultRow
-from lib.helpers import BaseWorkBook, ExcelHelpers
+from lib.helpers import BaseWorkBook
 from lib.osvfile import OsvAccuralRecord, OsvAddressRecord
 from lib.reaccural import ReaccuralType
 
@@ -82,7 +81,6 @@ class HeatingResultRow(BaseResultRow):
         data: OsvAddressRecord,
         accural: OsvAccuralRecord,
         has_odpu: str,
-        heating_average_file: AddressFile,
         account_details: AccountDetailsFileSingleton,
         buildings: BuildingsFile,
     ) -> None:
@@ -100,13 +98,10 @@ class HeatingResultRow(BaseResultRow):
             self.set_field(15, 6)
             self.set_field(16, 3)
         # chapter 3:
-        heating_averages = heating_average_file.get_sheet_data_formatted(str(date.year))
-        # 'data_formatted' is used here instead of 'data_raw', because
-        # value of heating average is not required in result table,
-        # we only need address of the building to know that heating average was calculated
-        has_heating_average: bool = ExcelHelpers.is_address_in_list(
-            data.address, heating_averages
+        building: BuildingRecord = buildings.get_address_row(
+            data.address, str(date.year)
         )
+        has_heating_average = building.has_heating_average
         if has_odpu and has_heating_average:
             quantity = f"{float(accural.heating) / self.price:.4f}".replace(".", ",")
             quantity_average = quantity
@@ -149,7 +144,6 @@ class HeatingReaccuralResultRow(BaseResultRow):
         data: OsvAddressRecord,
         buildings: BuildingsFile,
         has_odpu: str,
-        heating_average_file: AddressFile,
         accural_sum: float,
         service,
     ) -> None:
@@ -168,13 +162,10 @@ class HeatingReaccuralResultRow(BaseResultRow):
             self.set_field(15, 6)
             self.set_field(16, 3)
         # chapter 3:
-        heating_averages = heating_average_file.get_sheet_data_formatted(str(date.year))
-        # 'data_formatted' is used here instead of 'data_raw', because
-        # value of heating average is not required in result table,
-        # we only need address of the building to know that heating average was calculated
-        has_heating_average: bool = ExcelHelpers.is_address_in_list(
-            data.address, heating_averages
+        building: BuildingRecord = buildings.get_address_row(
+            data.address, str(date.year)
         )
+        has_heating_average = building.has_heating_average
         if has_odpu and has_heating_average:
             quantity = f"{float(accural_sum) / self.price:.4f}".replace(".", ",")
             quantity_average = quantity

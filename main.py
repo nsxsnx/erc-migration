@@ -11,7 +11,6 @@ from decimal import Decimal
 from os.path import basename
 from typing import Mapping
 
-from lib.addressfile import AddressFile
 from lib.buildingsfile import BuildingRecord, BuildingsFile
 from lib.datatypes import MonthYear
 from lib.detailsfile import (
@@ -85,15 +84,6 @@ class RegionDir:
         self.base_dir = base_dir
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
         self.error_handler = ErrorMessageConsoleHandler()
-        self.heating_average = AddressFile(
-            os.path.join(self.base_dir, conf["file.heating_average"]),
-            self.conf,
-        )
-        logging.info(
-            "Read heating average: %s sheets, %s elements total",
-            self.heating_average.get_sheets_count(),
-            self.heating_average.get_strings_count(),
-        )
         self.buildings: BuildingsFile = BuildingsFile(
             os.path.join(self.base_dir, conf["file.buildings"]),
             1,
@@ -104,7 +94,6 @@ class RegionDir:
             self.buildings.get_sheets_count(),
             self.buildings.get_strings_count(),
         )
-
         self.heating_corrections: HeatingCorrectionsFile = HeatingCorrectionsFile(
             os.path.join(self.base_dir, self.conf["file.heating_corrections"]),
             1,
@@ -231,7 +220,6 @@ class RegionDir:
                 self.osv.address_record,
                 self.osv.accural_record,
                 self.building_record.has_odpu,
-                self.heating_average,
                 self.account_details,
                 self.buildings,
             )
@@ -420,7 +408,6 @@ class RegionDir:
             self.osv.address_record,
             self.buildings,
             self.building_record.has_odpu,
-            self.heating_average,
             correction_sum,
             service,
         )

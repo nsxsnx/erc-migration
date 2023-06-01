@@ -36,14 +36,6 @@ class ExcelHelpers:
         col_number = ExcelHelpers.get_col_by_name(sheet, name, 1) - 1
         return row[col_number]
 
-    @classmethod
-    def is_address_in_list(cls, full_addr: str, addr_list: list[str]) -> bool:
-        "Returns True if full_addr:str includes at least one of addr_list"
-        for addr in addr_list:
-            if addr + "," in full_addr.lower() or addr + " " in full_addr.lower():
-                return True
-        return False
-
 
 def timeit(func):
     "Decorator that mesaruses and prints function execution time"
