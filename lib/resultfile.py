@@ -71,6 +71,16 @@ class BaseResultRow:
             result.append(getattr(self, f"f{ind:02d}"))
         return result
 
+    def _set_odpu_fields(self) -> None:
+        self.set_field(9, "Общедомовый")
+        self.set_field(10, "01.01.2018")
+        self.set_field(11, "Подвал")
+        self.set_field(12, 1)
+        self.set_field(13, "ВКТ-5")
+        self.set_field(14, 1)
+        self.set_field(15, 6)
+        self.set_field(16, 3)
+
 
 class HeatingResultRow(BaseResultRow):
     "Result row for Heating service"
@@ -89,14 +99,7 @@ class HeatingResultRow(BaseResultRow):
         self.set_field(5, "Отопление")
         # chapter 2:
         if has_odpu:
-            self.set_field(9, "Общедомовый")
-            self.set_field(10, "01.01.2018")
-            self.set_field(11, "Подвал")
-            self.set_field(12, 1)
-            self.set_field(13, "ВКТ-5")
-            self.set_field(14, 1)
-            self.set_field(15, 6)
-            self.set_field(16, 3)
+            self._set_odpu_fields()
         # chapter 3:
         building: BuildingRecord = buildings.get_address_row(
             data.address, str(date.year)
@@ -153,14 +156,7 @@ class HeatingReaccuralResultRow(BaseResultRow):
         self.set_field(6, date.previous.month)
         self.set_field(7, date.previous.year)
         if has_odpu:
-            self.set_field(9, "Общедомовый")
-            self.set_field(10, "01.01.2018")
-            self.set_field(11, "Подвал")
-            self.set_field(12, 1)
-            self.set_field(13, "ВКТ-5")
-            self.set_field(14, 1)
-            self.set_field(15, 6)
-            self.set_field(16, 3)
+            self._set_odpu_fields()
         # chapter 3:
         building: BuildingRecord = buildings.get_address_row(
             data.address, str(date.year)
@@ -458,23 +454,14 @@ class HeatingCorrectionResultRow(BaseResultRow):
         self.set_field(7, correction_date.year)
         self.price = buildings.get_tariff(data.address, correction_date)
         self.set_field(8, self.price)
-        self.set_field(9, "Общедомовый")
-        self.set_field(10, "01.01.2018")
-        self.set_field(11, "Подвал")
-        self.set_field(12, 1)
-        self.set_field(13, "ВКТ-5")
-        self.set_field(14, 1)
-        self.set_field(15, 6)
-        self.set_field(16, 3)
+        self._set_odpu_fields()
         self.set_field(19, f"23.{correction_date.month:02d}.{correction_date.year}")
         self.set_field(20, "Контрольное")
         self.set_field(22, odpu_volume)
-        # accural_sum = round(correction_volume * self.price - correction_sum, 2)
-        #
-        # loosing some penny because of rounding
-        # compensate for it:
         accural_sum = correction_volume * self.price - correction_sum
         accural_sum_rounded = round(accural_sum, 2)
+        # loosing some penny because of rounding
+        # compensate for it:
         self.rounding_error[0] += accural_sum - accural_sum_rounded
         HALF_PENNY = 0.005  # pylint: disable=C0103
         if abs(self.rounding_error[0]) >= HALF_PENNY:
@@ -507,14 +494,7 @@ class HeatingNegativeCorrectionZeroResultRow(BaseResultRow):
         self.set_field(7, correction_date.year)
         self.price = buildings.get_tariff(data.address, correction_date)
         self.set_field(8, self.price)
-        self.set_field(9, "Общедомовый")
-        self.set_field(10, "01.01.2018")
-        self.set_field(11, "Подвал")
-        self.set_field(12, 1)
-        self.set_field(13, "ВКТ-5")
-        self.set_field(14, 1)
-        self.set_field(15, 6)
-        self.set_field(16, 3)
+        self._set_odpu_fields()
         self.set_field(
             45,
             account_details.get_service_month_closing_balance(date, service),
@@ -543,14 +523,7 @@ class HeatingPositiveCorrectionResultRow(BaseResultRow):
         self.set_field(7, correction_date.year)
         self.price = Decimal(buildings.get_tariff(data.address, correction_date))
         self.set_field(8, self.price)
-        self.set_field(9, "Общедомовый")
-        self.set_field(10, "01.01.2018")
-        self.set_field(11, "Подвал")
-        self.set_field(12, 1)
-        self.set_field(13, "ВКТ-5")
-        self.set_field(14, 1)
-        self.set_field(15, 6)
-        self.set_field(16, 3)
+        self._set_odpu_fields()
         self.set_field(19, f"31.12.{correction_date.year}")
         self.set_field(20, "Контрольное")
         self.set_field(39, future_installment)
@@ -579,14 +552,7 @@ class HeatingPositiveCorrectionExcessiveReaccuralResultRow(BaseResultRow):
         self.set_field(7, correction_date.year)
         self.price = Decimal(buildings.get_tariff(data.address, correction_date))
         self.set_field(8, self.price)
-        self.set_field(9, "Общедомовый")
-        self.set_field(10, "01.01.2018")
-        self.set_field(11, "Подвал")
-        self.set_field(12, 1)
-        self.set_field(13, "ВКТ-5")
-        self.set_field(14, 1)
-        self.set_field(15, 6)
-        self.set_field(16, 3)
+        self._set_odpu_fields()
         quantity = f"{accural_sum / self.price:.4f}".replace(".", ",")
         self.set_field(23, quantity)
         self.set_field(24, accural_sum)
