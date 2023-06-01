@@ -121,6 +121,11 @@ class Reaccural:
         except IndexError:
             pass
 
+    def _change_records_sign(self) -> None:
+        if self.totalsum < Decimal("0.00"):
+            for rec in self.records:
+                rec.sum = -rec.sum
+
     def __init__(
         self,
         account_details: AccountDetailsFileSingleton,
@@ -136,6 +141,7 @@ class Reaccural:
         self.service = service
         self.try_decompose_to_zero()
         if self.valid:
+            self._change_records_sign()
             return
         try:
             next_month_accural = Decimal(
@@ -151,6 +157,5 @@ class Reaccural:
             self.try_decompose_to_previous_accurance()
         if not self.valid:
             self.records.append(ReaccuralMonthRec(reaccural_date, reaccural_sum))
-        if self.valid and self.totalsum < Decimal("0.00"):
-            for rec in self.records:
-                rec.sum = -rec.sum
+        if self.valid:
+            self._change_records_sign()
