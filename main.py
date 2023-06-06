@@ -455,12 +455,12 @@ class RegionDir:
             [m.lower() for m in calendar.month_abbr if m], start=1
         ):
             correction_sum = getattr(correction_record, month_abbr)
+            correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
             correction_date = MonthYear(month_num, self.osv_file.date.year - 1)
-            if not correction_sum:
+            if not correction_sum and not correction_volume:
                 continue
             if correction_sum < 0:
                 self._create_heating_reaccural_record(correction_date, correction_sum)
-            correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
             odpu_records: list[
                 HeatingVolumesOdpuRecord
             ] = self.heating_volumes_odpu.as_filtered_list(
