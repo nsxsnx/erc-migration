@@ -487,7 +487,7 @@ class RegionDir:
             self.results.add_row(row)
         if is_positive_correction:
             self._add_future_installment_records(service)
-            self._add_closing_balance_records(service)
+            # self._add_closing_balance_records(service)
 
     def _add_future_installment_records(self, service):
         correction = HeatingPositiveCorrection(
