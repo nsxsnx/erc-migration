@@ -72,26 +72,20 @@ class Reaccural:
         floating_sum = self.totalsum
         rec = []
         for _ in range(MAX_DEPTH):
+            date = date.previous
             try:
                 prev_accural = Decimal(
-                    self.account_data.get_service_month_accural(
-                        date := date.previous, self.service
-                    )
-                ).quantize(Decimal("0.01"))
-                second_prev_accural = Decimal(
-                    self.account_data.get_service_month_accural(
-                        date.previous, self.service
-                    )
+                    self.account_data.get_service_month_accural(date, self.service)
                 ).quantize(Decimal("0.01"))
             except NoServiceRow:
                 continue
-            rec.append(ReaccuralMonthRec(date, float(prev_accural)))
-            floating_sum += prev_accural
-            if abs(floating_sum) < second_prev_accural:
-                rec.append(ReaccuralMonthRec(date.previous, abs(float(floating_sum))))
+            if abs(floating_sum) < abs(prev_accural):
+                rec.append(ReaccuralMonthRec(date, float(floating_sum)))
                 self.records = rec[::-1]
                 self.valid = True
                 return
+            rec.append(ReaccuralMonthRec(date, float(prev_accural)))
+            floating_sum += prev_accural
 
     def set_type(self, p_type: ReaccuralType) -> None:
         "Reaccural type setter"
@@ -124,7 +118,7 @@ class Reaccural:
     def _change_records_sign(self) -> None:
         if self.totalsum < Decimal("0.00"):
             for rec in self.records:
-                rec.sum = -rec.sum
+                rec.sum = -abs(rec.sum)
 
     def __init__(
         self,
