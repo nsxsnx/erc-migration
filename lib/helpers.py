@@ -1,7 +1,6 @@
 "Common helper functions"
 
-import time
-from functools import wraps
+from functools import lru_cache
 from typing import Any, Callable, Iterable, Type, TypeVar
 
 from openpyxl import Workbook, load_workbook
@@ -35,21 +34,6 @@ class ExcelHelpers:
         """Returns cell value of a row by the column name"""
         col_number = ExcelHelpers.get_col_by_name(sheet, name, 1) - 1
         return row[col_number]
-
-
-def timeit(func):
-    "Decorator that mesaruses and prints function execution time"
-
-    @wraps(func)
-    def timeit_wrapper(*args, **kwargs):
-        start_time = time.perf_counter()
-        result = func(*args, **kwargs)
-        end_time = time.perf_counter()
-        total_time = end_time - start_time
-        print(f"Function {func.__name__}{args} {kwargs} Took {total_time:.4f} seconds")
-        return result
-
-    return timeit_wrapper
 
 
 class BaseWorkBook:
@@ -148,6 +132,7 @@ class BaseMultisheetWorkBookData(BaseWorkBook):
             "of a file {self.filename}"
         )
 
+    @lru_cache(maxsize=1)
     def get_account_row(self, account: str, sheet_name: str) -> Any:
         "Finds on a given sheet and returns a row with given value of .account attribute"
         return self.get_row_by_field_value("account", account, sheet_name)

@@ -3,8 +3,9 @@
 import logging
 import re
 from dataclasses import dataclass
-from lib.datatypes import MonthYear
+from functools import cache
 
+from lib.datatypes import MonthYear
 from lib.exceptions import NoAddressRow
 from lib.helpers import BaseMultisheetWorkBookData
 
@@ -39,6 +40,7 @@ class BuildingsFile(BaseMultisheetWorkBookData):
             raise ValueError(f"Can't understand address: {address}")
         return match.groupdict()
 
+    @cache  # pylint: disable=W1518
     def get_address_row(self, address: str, sheet_name: str) -> BuildingRecord:
         "Finds and returns row data for a given address in a given sheet"
         address_dict = self._reg_match_address(address)
@@ -57,6 +59,7 @@ class BuildingsFile(BaseMultisheetWorkBookData):
             )
         return rows[0]
 
+    @cache  # pylint: disable=W1518
     def get_tariff(
         self, address: str, date: MonthYear, use_reduction_factor: bool = False
     ):

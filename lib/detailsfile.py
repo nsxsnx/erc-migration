@@ -1,6 +1,7 @@
 "Files with details of accounts and gvs accurence"
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Callable, Self
 
 from lib.datatypes import MonthYear
@@ -95,6 +96,7 @@ class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
         )
         self.account = account
 
+    @lru_cache(maxsize=1)
     def _get_month_service_row(
         self, date: MonthYear, service: str
     ) -> AccountDetailsRecord:
