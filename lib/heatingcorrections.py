@@ -14,6 +14,45 @@ from lib.helpers import BaseMultisheetWorkBookData
 @dataclass
 class HeatingCorrectionRecord:
     "Record of the last-year heating corrections Excel table"
+    __slots__ = (
+        "line_num",
+        "municipality",
+        "street",
+        "house",
+        "building",
+        "appartment",
+        "account",
+        "account_status",
+        "square",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "may",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
+        "total",
+        "year_correction",
+        "vkv_jan",
+        "vkv_feb",
+        "vkv_mar",
+        "vkv_apr",
+        "vkv_may",
+        "vkv_jun",
+        "vkv_jul",
+        "vkv_aug",
+        "vkv_sep",
+        "vkv_oct",
+        "vkv_nov",
+        "vkv_dec",
+        "_month_index",
+    )
+
     line_num: str
     municipality: str
     street: str

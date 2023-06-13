@@ -27,6 +27,20 @@ MONTHES_RUS = {
 @dataclass
 class AccountDetailsRecord:
     "A valuable row of account details table"
+    __slots__ = (
+        "year",
+        "month_str",
+        "service",
+        "population",
+        "opening_balance",
+        "accural",
+        "reaccural",
+        "totalaccural",
+        "payment",
+        "closing_balance",
+        "date",
+    )
+
     year: int
     month_str: str
     service: str
@@ -37,7 +51,7 @@ class AccountDetailsRecord:
     totalaccural: float
     payment: float
     closing_balance: float
-    date: MonthYear | None = None
+    # date: MonthYear | None = None
 
     def __post_init__(self):
         self.date = MonthYear(MONTHES_RUS[self.month_str], self.year)
@@ -46,6 +60,28 @@ class AccountDetailsRecord:
 @dataclass
 class GvsDetailsRecord:
     "Records of GVS Excel table"
+    __slots__ = (
+        "address",
+        "account",
+        "people_registered",
+        "people_living",
+        "account_status",
+        "counter_id",
+        "counter_number",
+        "metric_date_previos",
+        "metric_date_current",
+        "metric_previos",
+        "metric_current",
+        "metric_difference",
+        "consumption_ipu",
+        "consumption_normative",
+        "consumption_average",
+        "rise",
+        "consumptions_odn",
+        "recalculation_volume",
+        "total",
+    )
+
     address: str
     account: str
     people_registered: int
@@ -69,12 +105,7 @@ class GvsDetailsRecord:
     @classmethod
     def get_dummy_instance(cls) -> Self:
         "Returns class instance wih all attributes set to None"
-        return cls(
-            *[
-                None,
-            ]
-            * 19
-        )
+        return cls(*[None] * 19)
 
 
 class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
