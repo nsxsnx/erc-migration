@@ -234,26 +234,24 @@ class FilledTableUpdater:
         heating_corrections: list[AccountClosingBalance] = self.table.as_filtered_list(
             ("type_name",), ("HEATING_POSITIVE_CORRECTION",)
         )
+        heating_accurals: list[AccountClosingBalance] = self.table.as_filtered_list(
+            ("type_name",), ("HEATING_ACCURAL",)
+        )
+        account_accurals: list[AccountClosingBalance] = []
         for correction in heating_corrections:
-            heating_accurals: list[AccountClosingBalance] = self.table.as_filtered_list(
-                (
-                    "account",
-                    "date",
-                    "type_name",
-                ),
-                (
-                    correction.account,
-                    correction.date,
-                    "HEATING_ACCURAL",
-                ),
-            )
-            match len(heating_accurals):
+            if (
+                not account_accurals
+                or correction.account != account_accurals[0].account
+            ):
+                account_accurals = [
+                    rec for rec in heating_accurals if rec.account == correction.account
+                ]
+            account_date_accurals: list[AccountClosingBalance] = [
+                rec for rec in account_accurals if rec.date == correction.date
+            ]
+            match len(account_date_accurals):
                 case 0:
                     continue
-                    # raise ValueError(
-                    #     f"No corresponding heating accural found: \
-                    #         {correction.account} {correction.date}"
-                    # )
                 case 1:
                     pass
                 case _:
@@ -261,7 +259,7 @@ class FilledTableUpdater:
                         f"Too many corresponding heating accural found: \
                             {correction.account} {correction.date}"
                     )
-            accural_row = heating_accurals[0]
+            accural_row = account_date_accurals[0]
             cell = self.table.workbook.active[f"AT{accural_row.row_num}"]
             cell.value = accural_row.closing_balance - correction.closing_balance
         logging.info("Decreasing closing balance done")
