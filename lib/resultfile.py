@@ -578,7 +578,6 @@ class ResultFile(BaseWorkBook):
         shutil.copyfile(template_name_full, self.file_name_full)
         self.workbook = load_workbook(filename=self.file_name_full)
         self.sheet = self.workbook[self.sheet_name]
-        logging.info("Initialazing result table done")
 
     def save(self) -> None:
         """Saves result table data to disk"""

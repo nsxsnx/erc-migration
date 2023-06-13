@@ -130,7 +130,6 @@ class RegionDir:
             else:
                 logging.critical("Non *.xlsx found in OSV_DIR, exiting")
                 sys.exit(1)
-        logging.info("Initialazing %s region data done", base_dir)
         self.results = ResultFile(self.base_dir, self.conf)
 
     def _get_osv_column_indexes(self) -> ColumnIndex:
@@ -443,8 +442,7 @@ class RegionDir:
             and reaccural != correction_record.year_correction
         ):
             logging.warning(
-                "Could not determine last year heating correction for %s in %s. "
-                "Reaccural: %s; last year correction: %s",
+                "No heating correction for %s in %s. Reaccural/Correction: %s/%s",
                 self.account,
                 self.osv_file.date,
                 reaccural,
@@ -701,7 +699,11 @@ if __name__ == "__main__":
     config = configparser.ConfigParser(inline_comment_prefixes="#")
     config.read(CONFIG_PATH)
     LOGFORMAT = "%(asctime)s %(levelname)s - %(message)s"
-    logging.basicConfig(level=config["DEFAULT"]["loglevel"], format=LOGFORMAT)
+    logging.basicConfig(
+        level=config["DEFAULT"]["loglevel"],
+        format=LOGFORMAT,
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     for exp in OSVDATA_REGEXP:
         osvdata_regexp_compiled.append(re.compile(exp))
     for section in config.sections():

@@ -35,3 +35,6 @@ class MonthYear:
     def month_abbr(self) -> str:
         "Returns month's abbreviations, eg. 'jan', 'feb', 'mar', etc."
         return calendar.month_abbr[self.month].lower()
+
+    def __str__(self) -> str:
+        return f"{self.month:02d}.{self.year}"
