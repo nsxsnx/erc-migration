@@ -568,7 +568,8 @@ class ResultFile(BaseWorkBook):
     def __init__(self, base_dir: str, conf: dict) -> None:
         self.base_dir = base_dir
         self.conf = conf
-        file_name, self.sheet_name = conf["result_file"].split("@", 2)
+        file_name, self.sheet_name, header_row = conf["result_file"].split("@", 3)
+        self.header_row = int(header_row)
         self.file_name_full = os.path.join(self.base_dir, file_name)
         template_name_full = os.path.join(
             os.path.dirname(self.base_dir), conf["result_template"]
@@ -583,7 +584,7 @@ class ResultFile(BaseWorkBook):
         """Saves result table data to disk"""
         logging.info("Saving results table...")
         self.workbook.save(filename=self.file_name_full)
-        logging.info("Saving results table done")
+        logging.info("All done")
 
     def add_row(self, row: BaseResultRow):
         "Adds row to table"

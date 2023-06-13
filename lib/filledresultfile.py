@@ -1,17 +1,18 @@
 " Classes to search for GVS IPUs changes"
 
 import logging
+from collections import Counter
 from dataclasses import dataclass, fields
 from typing import Any, Callable, Type
 
 from lib.datatypes import MonthYear
-from lib.helpers import BaseWorkBookData
-from lib.resultfile import GvsIpuInstallDates
+from lib.resultfile import GvsIpuInstallDates, ResultFile
 
 
 @dataclass
 class AccountRow:
     "Base class for all typed result rows"
+    __slots__ = "row_num", "date", "account"
     row_num: int
     date: MonthYear
     account: str
@@ -20,6 +21,7 @@ class AccountRow:
 @dataclass
 class GvsIpuMetric(AccountRow):
     "Dates, numbers and metrics of GVS IPUs to find IPU replacement"
+    __slots__ = "counter_number", "metric", "metric_date"
     counter_number: str
     metric: float
     metric_date: str
@@ -28,6 +30,7 @@ class GvsIpuMetric(AccountRow):
 @dataclass
 class AccountClosingBalance(AccountRow):
     "Closing balance of a record"
+    __slots__ = "type_name", "closing_balance"
     type_name: str
     closing_balance: float
 
@@ -134,68 +137,60 @@ class FilledResultRawRecord:
     f46: str
 
 
-class FilledResultTable(BaseWorkBookData):
-    "Represents result table to be opened for the second time"
+class FilledTableUpdater:
+    """
+    Performs some additional data modifications or result records
+    """
 
-    def __init__(
-        self,
-        filename: str,
-        header_row: int,
-        record_class: Type[Any],
-        filter_func: Callable[[Any], bool] | None = None,
-        max_col: int | None = None,
-    ) -> None:
-        self._filter_func = filter_func
-        self._header_row = header_row
+    def __init__(self, results: ResultFile, max_col: int | None = None) -> None:
+        logging.info("Re-reading result rows...")
+        record_class = FilledResultRawRecord
+        self.changes_counter = Counter()
         if not max_col:
             max_col = len(fields(record_class))
-        super().__init__(filename, header_row, record_class, None, max_col)
+        self.table = results
+        sheet = self.table.sheet
+        self.records: list[record_class] = list()
+        self._records: list = list()
+        for row in sheet.iter_rows(  # type: ignore
+            min_row=self.table.header_row + 1, max_col=max_col, values_only=True
+        ):
+            record = record_class(*row)
+            self.records.append(record)
 
-    def records_to_class(self, record_class: Type):
-        "Converts raw result record to typed one"
+    def prepare_records_cache(
+        self,
+        record_class: Type,
+        filter_func: Callable[[Any], bool] | None = None,
+    ):
+        "Filters raw result records and converts them to typed one for additional processing"
         record_class_fields = [
             field.name for field in fields(record_class)[len(fields(AccountRow)) :]
         ]
         res: list[record_class] = []
         for i, rec in enumerate(self.records):
-            if self._filter_func is not None and not self._filter_func(rec):
+            if filter_func is not None and not filter_func(rec):
                 continue
             res.append(
                 record_class(
-                    i + self._header_row + 1,
+                    i + self.table.header_row + 1,
                     MonthYear(rec.month, rec.year),
                     rec.account,
                     *[getattr(rec, field_name) for field_name in record_class_fields],
                 )
             )
-        self.records = res
-
-
-class FilledTableUpdater:
-    """
-    Opens result table and performs some additional data modifications
-    """
-
-    def __init__(self, file_name_full: str, filter_func: Callable) -> None:
-        logging.info("Reading data from result table")
-        self.table = FilledResultTable(
-            file_name_full,
-            3,
-            FilledResultRawRecord,
-            filter_func=filter_func,
-        )
-        logging.info("Reading data from result table done")
+        self._records = res
 
     def find_gvs_ipu_replacements(self):
         """Finds replacements of IPUs relying on changes of IPU number"""
         logging.info("Looking for IPU replacement...")
+        counter_name = "IPU_replacement"
         active_sheet = self.table.workbook.active
-        gvs_accounts = self.table.get_field_values("account")
-        total_ipu_replacements = 0
+        gvs_accounts = sorted({r.account for r in self._records})
         for gvs_account in gvs_accounts:
-            counters: list[GvsIpuMetric] = self.table.as_filtered_list(
-                ("account",), (gvs_account,)
-            )
+            counters: list[GvsIpuMetric] = [
+                r for r in self._records if r.account == gvs_account
+            ]
             ignore_next = False
             for i, current_el in enumerate(counters[:-1]):
                 next_el = counters[i + 1]
@@ -216,27 +211,25 @@ class FilledTableUpdater:
                     GvsIpuInstallDates[gvs_account] = next_el.metric_date
                     logging.debug(current_el)
                     logging.debug(next_el)
-                    total_ipu_replacements += 1
+                    self.changes_counter.update([counter_name])
                 if gvs_account in GvsIpuInstallDates:
                     row_num = next_el.row_num
                     date_cell = active_sheet[f"K{row_num}"]
                     date_cell.value = GvsIpuInstallDates[gvs_account]
-        logging.info(
-            "Total additional IPU replacements found: %s", total_ipu_replacements
-        )
 
     def decrease_closing_balance(self):
         """
-        Closing balance of main heating record must be decreased by the value of
-        positive correction (installment) record
+        Closing balance of heating accural record must be decreased by the value
+        of corresponding positive correction (installment) record
         """
         logging.info("Decreasing closing balance...")
-        heating_corrections: list[AccountClosingBalance] = self.table.as_filtered_list(
-            ("type_name",), ("HEATING_POSITIVE_CORRECTION",)
-        )
-        heating_accurals: list[AccountClosingBalance] = self.table.as_filtered_list(
-            ("type_name",), ("HEATING_ACCURAL",)
-        )
+        counter_name = "Closing_balance_decrease"
+        heating_corrections: list[AccountClosingBalance] = [
+            r for r in self._records if r.type_name == "HEATING_POSITIVE_CORRECTION"
+        ]
+        heating_accurals: list[AccountClosingBalance] = [
+            r for r in self._records if r.type_name == "HEATING_ACCURAL"
+        ]
         account_accurals: list[AccountClosingBalance] = []
         for correction in heating_corrections:
             if (
@@ -261,12 +254,5 @@ class FilledTableUpdater:
                     )
             accural_row = account_date_accurals[0]
             cell = self.table.workbook.active[f"AT{accural_row.row_num}"]
-            cell.value = accural_row.closing_balance - correction.closing_balance
-        logging.info("Decreasing closing balance done")
-
-    def save(self):
-        "Saves opened table"
-        logging.info("Saving results...")
-        self.table.save()
-        self.table.close()
-        logging.info("Saving results done")
+            cell.value = accural_row.closing_balance - float(correction.closing_balance)
+            self.changes_counter.update([counter_name])

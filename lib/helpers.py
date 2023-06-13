@@ -81,7 +81,7 @@ class BaseWorkBookData(BaseWorkBook):
 
     def get_field_values(self, field: str):
         "Returns sorted list of all possible values of a given field"
-        return list(sorted({getattr(r, field) for r in self.records}))
+        return sorted({getattr(r, field) for r in self.records})
 
     def __init__(
         self,

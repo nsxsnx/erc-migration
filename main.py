@@ -664,6 +664,7 @@ class RegionDir:
             self._process_gvs_elevated()
             self._process_gvs_reaccural(ResultRecordType.GVS_REACCURAL_ELEVATED)
             self._process_heating_correction()
+        self.osv_file.close()
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
@@ -684,10 +685,6 @@ class RegionDir:
             pass
         try:
             self.buildings.close()
-        except AttributeError:
-            pass
-        try:
-            self.heating_average.close()
         except AttributeError:
             pass
         try:
@@ -713,32 +710,25 @@ if __name__ == "__main__":
                 os.path.join(config["DEFAULT"]["base_dir"], section), config[section]
             )
             region.read_osvs()
+            filled_table = FilledTableUpdater(region.results)
+            filled_table.prepare_records_cache(
+                GvsIpuMetric,
+                filter_func=lambda s: s.type_name == ResultRecordType.GVS_ACCURAL.name,
+            )
+            filled_table.find_gvs_ipu_replacements()
+            filled_table.prepare_records_cache(
+                AccountClosingBalance,
+                filter_func=lambda s: s.type_name
+                in (
+                    ResultRecordType.HEATING_ACCURAL.name,
+                    ResultRecordType.HEATING_POSITIVE_CORRECTION.name,
+                ),
+            )
+            filled_table.decrease_closing_balance()
+            logging.info("Total changes: %s", filled_table.changes_counter)
             region.results.save()
         finally:
             try:
                 region.close()
             except NameError:
                 pass
-        result_file_name = os.path.join(
-            config["DEFAULT"]["base_dir"],
-            section,
-            config["DEFAULT"]["result_file"].split("@", 1)[0],
-        )
-        filled_table = FilledTableUpdater(
-            result_file_name,
-            filter_func=lambda s: s.type_name == ResultRecordType.GVS_ACCURAL.name,
-        )
-        filled_table.table.records_to_class(GvsIpuMetric)
-        filled_table.find_gvs_ipu_replacements()
-        filled_table.save()
-        filled_table = FilledTableUpdater(
-            result_file_name,
-            filter_func=lambda s: s.type_name
-            in (
-                ResultRecordType.HEATING_ACCURAL.name,
-                ResultRecordType.HEATING_POSITIVE_CORRECTION.name,
-            ),
-        )
-        filled_table.table.records_to_class(AccountClosingBalance)
-        filled_table.decrease_closing_balance()
-        filled_table.save()
