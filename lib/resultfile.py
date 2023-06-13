@@ -131,7 +131,7 @@ class HeatingResultRow(BaseResultRow):
             self.set_field(40, f"20.{date.month:02d}.{date.year}")
             self.set_field(41, f"20.{date.month:02d}.{date.year}")
             self.set_field(42, payment_sum)
-            self.set_field(43, "Оплата" if payment_sum else "Возврат оплаты")
+            self.set_field(43, "Оплата" if payment_sum >= 0 else "Возврат оплаты")
         # chapter 7:
         self.set_field(
             45, account_details.get_service_month_closing_balance(date, "Отопление")
@@ -251,7 +251,7 @@ class GvsSingleResultRow(BaseResultRow):
             self.set_field(40, f"20.{date.month:02d}.{date.year}")
             self.set_field(41, f"20.{date.month:02d}.{date.year}")
             self.set_field(42, payment_sum)
-            self.set_field(43, "Оплата" if payment_sum else "Возврат оплаты")
+            self.set_field(43, "Оплата" if payment_sum >= 0 else "Возврат оплаты")
         # chapter 10:
         try:
             closing_balance = account_details.get_service_month_closing_balance(

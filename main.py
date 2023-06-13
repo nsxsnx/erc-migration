@@ -267,7 +267,7 @@ class RegionDir:
                     )
                 except NoServiceRow:
                     closing_balance = 0.0
-                if closing_balance:
+                if closing_balance or self.osv.accural_record.payment:
                     gvs_row = GvsSingleResultRow(
                         self.osv_file.date,
                         self.osv.address_record,
