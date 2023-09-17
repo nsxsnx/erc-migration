@@ -12,7 +12,7 @@ from os.path import basename
 from typing import Mapping
 
 from lib.buildingsfile import BuildingRecord, BuildingsFile
-from lib.datatypes import MonthYear
+from lib.datatypes import MonthYear, Service
 from lib.detailsfile import (
     AccountDetailsFileSingleton,
     GvsDetailsFileSingleton,
@@ -211,7 +211,7 @@ class RegionDir:
             return
         self.account_details.seen_opening_balance.append(service)
         match service:
-            case "Отопление":
+            case Service.HEATING:
                 row = HeatingOpeningBalanceResultRow(
                     self.osv_file.date,
                     self.osv.address_record,
@@ -220,7 +220,7 @@ class RegionDir:
                     self.buildings,
                     service,
                 )
-            case "Тепловая энергия для подогрева воды" | "Тепловая энергия для подогрева воды (повышенный %)":
+            case Service.GVS | Service.GVS_ELEVATED:
                 gvs_details = GvsDetailsFileSingleton(
                     os.path.join(
                         self.base_dir,
@@ -258,7 +258,7 @@ class RegionDir:
             )
         ):
             return
-        service = "Отопление"
+        service = Service.HEATING
         try:
             heating_row = HeatingResultRow(
                 self.osv_file.date,
@@ -284,7 +284,7 @@ class RegionDir:
             )
         ):
             return
-        service = "Тепловая энергия для подогрева воды"
+        service = Service.GVS
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -364,9 +364,9 @@ class RegionDir:
     def _process_gvs_reaccural(self, record_type: ResultRecordType):
         match record_type:
             case ResultRecordType.GVS_REACCURAL:
-                service = "Тепловая энергия для подогрева воды"
+                service = Service.GVS
             case ResultRecordType.GVS_REACCURAL_ELEVATED:
-                service = "Тепловая энергия для подогрева воды (повышенный %)"
+                service = Service.GVS_ELEVATED
             case _:
                 raise ValueError("Unknown result record type")
         try:
@@ -420,7 +420,7 @@ class RegionDir:
             self.results.add_row(gvs_reaccural_row)
 
     def _process_gvs_elevated(self):
-        service = "Тепловая энергия для подогрева воды (повышенный %)"
+        service = Service.GVS_ELEVATED
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -451,7 +451,7 @@ class RegionDir:
         self._add_initial_balance_row(service)
 
     def _create_heating_reaccural_record(self, correction_date, correction_sum):
-        service = "Отопление"
+        service = Service.HEATING
         row = HeatingReaccuralResultRow(
             correction_date,
             self.osv.address_record,
@@ -463,7 +463,7 @@ class RegionDir:
         self.results.add_row(row)
 
     def _process_heating_correction(self):
-        service = "Отопление"
+        service = Service.HEATING
         if self.osv_file.date.month != self.building_record.correction_month:
             return
         try:
@@ -672,9 +672,9 @@ class RegionDir:
                 )
                 self.results.add_row(row)
 
-    def _process_osv(self, osv_file_name, is_first: bool) -> None:
+    def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
-        self.osv_file = OsvFile(osv_file_name, self.conf, is_first)
+        self.osv_file = OsvFile(osv_file_name, self.conf)
         column_index_data = self._get_osv_column_indexes()
         for row in self.osv_file.get_data_row():
             osv = self._init_current_osv_row(row, column_index_data)
@@ -716,11 +716,9 @@ class RegionDir:
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
-        is_first = True
         for file_name in self.osv_files:
             try:
-                self._process_osv(file_name, is_first)
-                is_first = False
+                self._process_osv(file_name)
             except Exception as err:  # pylint: disable=W0718
                 logging.critical("General exception: %s.", err.args)
                 raise
