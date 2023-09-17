@@ -32,6 +32,8 @@ class ResultRecordType(Enum):
     HEATING_CORRECTION_ZERO = 8
     HEATING_POSITIVE_CORRECTION = 9
     HEATING_POSITIVE_CORRECTION_EXCESSIVE_REACCURAL = 10
+    HEATING_OPENING_BALANCE = 11
+    GVS_OPENING_BALANCE = 12
 
 
 class BaseResultRow:
@@ -93,10 +95,11 @@ class HeatingResultRow(BaseResultRow):
         has_odpu: str,
         account_details: AccountDetailsFileSingleton,
         buildings: BuildingsFile,
+        service: str,
     ) -> None:
         super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.HEATING_ACCURAL.name)
-        self.set_field(5, "Отопление")
+        self.set_field(5, service)
         # chapter 2:
         if has_odpu:
             self._set_odpu_fields()
@@ -126,7 +129,7 @@ class HeatingResultRow(BaseResultRow):
         self.set_field(36, accural.heating)
         self.set_field(37, accural.heating)
         # chapter 6:
-        payment_sum = account_details.get_service_month_payment(date, "Отопление")
+        payment_sum = account_details.get_service_month_payment(date, service)
         if payment_sum != 0:
             self.set_field(40, f"20.{date.month:02d}.{date.year}")
             self.set_field(41, f"20.{date.month:02d}.{date.year}")
@@ -134,8 +137,81 @@ class HeatingResultRow(BaseResultRow):
             self.set_field(43, "Оплата" if payment_sum >= 0 else "Возврат оплаты")
         # chapter 7:
         self.set_field(
-            45, account_details.get_service_month_closing_balance(date, "Отопление")
+            45, account_details.get_service_month_closing_balance(date, service)
         )
+
+
+class HeatingOpeningBalanceResultRow(BaseResultRow):
+    """
+    Result row for Heating service opening balance on date of the oldest OSV-file
+    An opening balance of the current month ("date" parameter, eg. 01.2020) goes
+    to the "closing balance" field of previous month ("date.previous", e.g 12.2019) row
+    """
+
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        has_odpu: str,
+        account_details: AccountDetailsFileSingleton,
+        buildings: BuildingsFile,
+        service: str,
+    ) -> None:
+        super().__init__(date.previous, data, buildings)
+        self.set_field(4, ResultRecordType.HEATING_OPENING_BALANCE.name)
+        self.set_field(5, service)
+        if has_odpu:
+            self._set_odpu_fields()
+        try:
+            opening_balance = account_details.get_service_month_opening_balance(
+                date, service
+            )
+        except NoServiceRow:
+            opening_balance = 0
+        self.set_field(45, opening_balance)
+
+
+class GvsOpeningBalanceResultRow(BaseResultRow):
+    """
+    Result row for GVS and GVS elevated % services opening balance on date of the oldest OSV-file
+    An opening balance of the current month ("date" parameter, eg. 01.2020) goes
+    to the "closing balance" field of previous month ("date.previous", e.g 12.2019) row
+    """
+
+    def __init__(
+        self,
+        date: MonthYear,
+        data: OsvAddressRecord,
+        account_details: AccountDetailsFileSingleton,
+        gvs_details_row: GvsDetailsRecord | None,
+        buildings: BuildingsFile,
+        service: str,
+    ) -> None:
+        super().__init__(date.previous, data, buildings, use_reduction_factor=True)
+        self.set_field(4, ResultRecordType.GVS_OPENING_BALANCE.name)
+        self.set_field(5, service)
+        # chapter 3:
+        gvs = gvs_details_row
+        if gvs:
+            if gvs.counter_id or gvs.counter_number:
+                self.set_field(9, "Индивидуальный")
+                self.set_field(10, GvsIpuInstallDates.get(data.account, "01.01.2019"))
+                self.set_field(13, "СГВ-15")
+                if not gvs.counter_number:
+                    gvs.counter_number = GvsSingleResultRow._get_new_counter_number(
+                        gvs.counter_id
+                    )
+                self.set_field(14, gvs.counter_number)
+                self.set_field(15, 6)
+                self.set_field(16, 3)
+        # chapter 10:
+        try:
+            opening_balance = account_details.get_service_month_opening_balance(
+                date, service
+            )
+        except NoServiceRow:
+            opening_balance = 0
+        self.set_field(45, opening_balance)
 
 
 class HeatingReaccuralResultRow(BaseResultRow):
@@ -148,7 +224,7 @@ class HeatingReaccuralResultRow(BaseResultRow):
         buildings: BuildingsFile,
         has_odpu: str,
         accural_sum: float,
-        service,
+        service: str,
     ) -> None:
         super().__init__(date, data, buildings)
         self.set_field(4, ResultRecordType.HEATING_REACCURAL.name)

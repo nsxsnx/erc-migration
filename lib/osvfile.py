@@ -79,12 +79,13 @@ class OsvFile(BaseWorkBook):
             raise ValueError(f"Incorrect date in OSV file: {self.filename}")
         logging.debug("OSV date: %d.%d", self.date.month, self.date.year)
 
-    def __init__(self, file: str, conf: dict) -> None:
+    def __init__(self, file: str, conf: dict, is_first: bool) -> None:
         self.conf = conf
         logging.info("Reading OSV: %s...", basename(file))
         self.filename = file
         self.workbook = load_workbook(filename=file, data_only=True)
         self.sheet = self.workbook.active
+        self.is_first = is_first
         try:
             self._init_date()
         except (AttributeError, NameError):
