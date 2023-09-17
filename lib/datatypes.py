@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar
 from dataclasses import dataclass
+from enum import StrEnum
 
 
 @dataclass(frozen=True)
@@ -38,3 +39,9 @@ class MonthYear:
 
     def __str__(self) -> str:
         return f"{self.month:02d}.{self.year}"
+
+
+class Service(StrEnum):
+    HEATING = "Отопление"
+    GVS = "Тепловая энергия для подогрева воды"
+    GVS_ELEVATED = "Тепловая энергия для подогрева воды (повышенный %)"

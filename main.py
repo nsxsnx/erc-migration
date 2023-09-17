@@ -672,9 +672,9 @@ class RegionDir:
                 )
                 self.results.add_row(row)
 
-    def _process_osv(self, osv_file_name) -> None:
+    def _process_osv(self, osv_file_name, is_first: bool) -> None:
         "Process OSV file currently set as self.osv_file"
-        self.osv_file = OsvFile(osv_file_name, self.conf)
+        self.osv_file = OsvFile(osv_file_name, self.conf, is_first)
         column_index_data = self._get_osv_column_indexes()
         for row in self.osv_file.get_data_row():
             osv = self._init_current_osv_row(row, column_index_data)
@@ -716,9 +716,11 @@ class RegionDir:
 
     def read_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
+        is_first = True
         for file_name in self.osv_files:
             try:
-                self._process_osv(file_name)
+                self._process_osv(file_name, is_first)
+                is_first = False
             except Exception as err:  # pylint: disable=W0718
                 logging.critical("General exception: %s.", err.args)
                 raise
