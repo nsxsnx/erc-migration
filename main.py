@@ -559,14 +559,16 @@ class RegionDir:
                     )
                 ).quantize(Decimal("0.01"))
                 if month_num == self.osv_file.date.month:
-                    _total_correction = correction.last_year_correction.year_correction
+                    _total_correction = Decimal(
+                        correction.last_year_correction.year_correction
+                    )
                     future_installment = _total_correction - reaccural_sum
                     total_closing_balance = reaccural_sum
                     total_future_installment = future_installment
                 else:
                     future_installment = None
-                    total_closing_balance += reaccural_sum
-                    total_future_installment -= reaccural_sum
+                    total_closing_balance += reaccural_sum  # type: ignore
+                    total_future_installment -= reaccural_sum  # type: ignore
                 row = HeatingPositiveCorrectionResultRow(
                     self.osv_file.date,
                     self.osv.address_record,
@@ -582,9 +584,9 @@ class RegionDir:
                     last_total_future_installment = total_future_installment
                     total_future_installment = Decimal("0.00")
                     future_installment = None
-                    total_closing_balance = (
+                    total_closing_balance = Decimal(
                         correction.last_year_correction.year_correction
-                    )
+                    ).quantize(Decimal("0.01"))
                     correction_date = MonthYear(month_num + 1, correction.current_year)
                     row = HeatingPositiveCorrectionResultRow(
                         self.osv_file.date,
@@ -621,8 +623,10 @@ class RegionDir:
         else:
             correction_date = self.osv_file.date
             future_installment = None
-            total_closing_balance = correction.last_year_correction.year_correction
-            total_future_installment = 0
+            total_closing_balance = Decimal(
+                correction.last_year_correction.year_correction
+            ).quantize(Decimal("0.01"))
+            total_future_installment = Decimal("0.00")
             row = HeatingPositiveCorrectionResultRow(
                 self.osv_file.date,
                 self.osv.address_record,
@@ -757,6 +761,7 @@ if __name__ == "__main__":
     for exp in OSVDATA_REGEXP:
         osvdata_regexp_compiled.append(re.compile(exp))
     for section in config.sections():
+        region: RegionDir | None = None
         try:
             region = RegionDir(
                 os.path.join(config["DEFAULT"]["base_dir"], section), config[section]
@@ -780,7 +785,5 @@ if __name__ == "__main__":
             logging.info("Total changes: %s", filled_table.changes_counter)
             region.results.save()
         finally:
-            try:
+            if region:
                 region.close()
-            except NameError:
-                pass
