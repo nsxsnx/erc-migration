@@ -126,6 +126,7 @@ class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
             filename, header_row, AccountDetailsRecord, filter_func, max_col
         )
         self.account = account
+        self.seen_opening_balance = [str]
 
     @lru_cache(maxsize=1)
     def _get_month_service_row(
@@ -151,6 +152,10 @@ class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
     def get_service_month_closing_balance(self, date: MonthYear, service: str) -> float:
         "Returns closing balance of service for a particular month"
         return self._get_month_service_row(date, service).closing_balance
+
+    def get_service_month_opening_balance(self, date: MonthYear, service: str) -> float:
+        "Returns opening balance of service for a particular month"
+        return self._get_month_service_row(date, service).opening_balance
 
     def get_service_month_reaccural(self, date: MonthYear, service: str) -> float:
         "Returns accural for service for a particular month"

@@ -43,10 +43,12 @@ from lib.resultfile import (
     GvsElevatedResultRow,
     GvsMultipleResultFirstRow,
     GvsMultipleResultSecondRow,
+    GvsOpeningBalanceResultRow,
     GvsReaccuralResultRow,
     GvsSingleResultRow,
     HeatingCorrectionResultRow,
     HeatingNegativeCorrectionZeroResultRow,
+    HeatingOpeningBalanceResultRow,
     HeatingPositiveCorrectionExcessiveReaccuralResultRow,
     HeatingPositiveCorrectionResultRow,
     HeatingReaccuralResultRow,
@@ -204,6 +206,49 @@ class RegionDir:
             return True
         return False
 
+    def _add_initial_balance_row(self, service):
+        if service in self.account_details.seen_opening_balance:
+            return
+        self.account_details.seen_opening_balance.append(service)
+        match service:
+            case "Отопление":
+                row = HeatingOpeningBalanceResultRow(
+                    self.osv_file.date,
+                    self.osv.address_record,
+                    self.building_record.has_odpu,
+                    self.account_details,
+                    self.buildings,
+                    service,
+                )
+            case "Тепловая энергия для подогрева воды" | "Тепловая энергия для подогрева воды (повышенный %)":
+                gvs_details = GvsDetailsFileSingleton(
+                    os.path.join(
+                        self.base_dir,
+                        self.conf["gvs.dir"],
+                        f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+                    ),
+                    int(self.conf["gvs_details.header_row"]),
+                    lambda x: x.account,
+                )
+                gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
+                    ("account",), (self.osv.address_record.account,)
+                )
+                try:
+                    gvs_details_row = gvs_details_rows[0]
+                except IndexError:
+                    gvs_details_row = None
+                row = GvsOpeningBalanceResultRow(
+                    self.osv_file.date,
+                    self.osv.address_record,
+                    self.account_details,
+                    gvs_details_row,
+                    self.buildings,
+                    service,
+                )
+            case _:
+                raise NotImplementedError
+        self.results.add_row(row)
+
     def _process_heating(self):
         if not any(
             (
@@ -213,6 +258,7 @@ class RegionDir:
             )
         ):
             return
+        service = "Отопление"
         try:
             heating_row = HeatingResultRow(
                 self.osv_file.date,
@@ -221,10 +267,12 @@ class RegionDir:
                 self.building_record.has_odpu,
                 self.account_details,
                 self.buildings,
+                service,
             )
             self.results.add_row(heating_row)
         except NoServiceRow:
             pass
+        self._add_initial_balance_row(service)
 
     def _process_gvs(self):
         if not any(
@@ -311,6 +359,7 @@ class RegionDir:
                             service,
                         )
                     self.results.add_row(gvs_row)
+        self._add_initial_balance_row(service)
 
     def _process_gvs_reaccural(self, record_type: ResultRecordType):
         match record_type:
@@ -399,6 +448,7 @@ class RegionDir:
             self.results.add_row(row)
         except (NoServiceRow, ZeroDataResultRow):
             pass
+        self._add_initial_balance_row(service)
 
     def _create_heating_reaccural_record(self, correction_date, correction_sum):
         service = "Отопление"
