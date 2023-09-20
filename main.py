@@ -599,12 +599,17 @@ class RegionDir:
                         self.buildings,
                     )
                     self.results.add_row(row)
-                    next_month_reaccural = Decimal(
-                        self.account_details.get_service_month_reaccural(
-                            MonthYear(month_num + 1, self.osv_file.date.year),
-                            service,
-                        )
-                    ).quantize(Decimal("0.01"))
+                    try:
+                        next_month_reaccural = Decimal(
+                            self.account_details.get_service_month_reaccural(
+                                MonthYear(month_num + 1, self.osv_file.date.year),
+                                service,
+                            )
+                        ).quantize(Decimal("0.01"))
+                    except NoServiceRow:
+                        # not exactly account_closing_month,
+                        # but the last month we have data for
+                        break
                     excessive_reaccural = (
                         next_month_reaccural - last_total_future_installment
                     )
