@@ -176,16 +176,6 @@ class HeatingPositiveCorrection:
                 f"{self.last_year}",
             )
         )
-        self.is_active_current_year = True
-        try:
-            self.current_year_correction: HeatingCorrectionRecord = (
-                heating_corrections.get_account_row(
-                    self.account,
-                    f"{self.current_year}",
-                )
-            )
-        except ValueError:
-            self.is_active_current_year = False
         current_year_close_month = self.account_details.get_service_closing_month(
             self.current_year, service
         )
