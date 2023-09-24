@@ -1,19 +1,14 @@
-"Table to store results"
+"Calculations list of the workbook"
 
 from decimal import Decimal
-import logging
-import os
-import shutil
 from enum import Enum
 from typing import Any
 
-from openpyxl import load_workbook
 
 from lib.buildingsfile import BuildingRecord, BuildingsFile
 from lib.datatypes import MonthYear
 from lib.detailsfile import AccountDetailsFileSingleton, GvsDetailsRecord
 from lib.exceptions import NoServiceRow, ZeroDataResultRow
-from lib.helpers import BaseWorkBook
 from lib.osvfile import OsvAccuralRecord, OsvAddressRecord
 from lib.reaccural import ReaccuralType
 
@@ -40,7 +35,7 @@ class BaseResultRow:
     "Base class for a row of result table"
     MAX_FIELDS = 47
 
-    def set_field(self, ind: int, value: str | int | float | None = None):
+    def set_field(self, ind: int, value: str | int | float | Decimal | None = None):
         "Field setter by field number"
         setattr(self, f"f{ind:02d}", value)
 
@@ -636,31 +631,3 @@ class HeatingPositiveCorrectionExcessiveReaccuralResultRow(BaseResultRow):
         self.set_field(35, quantity)
         self.set_field(36, accural_sum)
         self.set_field(37, accural_sum)
-
-
-class ResultFile(BaseWorkBook):
-    """Table of results"""
-
-    def __init__(self, base_dir: str, conf: dict) -> None:
-        self.base_dir = base_dir
-        self.conf = conf
-        file_name, self.sheet_name, header_row = conf["result_file"].split("@", 3)
-        self.header_row = int(header_row)
-        self.file_name_full = os.path.join(self.base_dir, file_name)
-        template_name_full = os.path.join(
-            os.path.dirname(self.base_dir), conf["result_template"]
-        )
-        logging.info("Initialazing result table %s ...", self.file_name_full)
-        shutil.copyfile(template_name_full, self.file_name_full)
-        self.workbook = load_workbook(filename=self.file_name_full)
-        self.sheet = self.workbook[self.sheet_name]
-
-    def save(self) -> None:
-        """Saves result table data to disk"""
-        logging.info("Saving results table...")
-        self.workbook.save(filename=self.file_name_full)
-        logging.info("All done")
-
-    def add_row(self, row: BaseResultRow):
-        "Adds row to table"
-        self.sheet.append(row.as_list())

@@ -1,4 +1,4 @@
-" Classes to search for GVS IPUs changes"
+"Classes to search for GVS IPUs changes"
 
 import logging
 from collections import Counter
@@ -6,7 +6,9 @@ from dataclasses import dataclass, fields
 from typing import Any, Callable, Type
 
 from lib.datatypes import MonthYear
-from lib.resultfile import GvsIpuInstallDates, ResultFile
+from results import ResultSheet
+from results.calculations import GvsIpuInstallDates
+from results.workbook import ResultWorkBook
 
 
 @dataclass
@@ -137,25 +139,30 @@ class FilledResultRawRecord:
     f46: str
 
 
-class FilledTableUpdater:
+class WorkBookDataUpdater:
     """
     Performs some additional data modifications or result records
     """
 
-    def __init__(self, results: ResultFile, max_col: int | None = None) -> None:
+    def __init__(
+        self,
+        results: ResultWorkBook,
+        sheet: ResultSheet,
+        max_col: int | None = None,
+    ) -> None:
         logging.info("Re-reading result rows...")
         record_class = FilledResultRawRecord
         self.changes_counter = Counter()
         if not max_col:
             max_col = len(fields(record_class))
         self.table = results
-        sheet = self.table.sheet
+        self.sheet = self.table.workbook[sheet.value]  # type:ignore
         self.records: list[record_class] = list()
         self._records: list = list()
-        for row in sheet.iter_rows(  # type: ignore
+        for row in self.sheet.iter_rows(  # type: ignore
             min_row=self.table.header_row + 1, max_col=max_col, values_only=True
         ):
-            record = record_class(*row)
+            record = record_class(*row)  # type: ignore
             self.records.append(record)
 
     def prepare_records_cache(
@@ -185,8 +192,8 @@ class FilledTableUpdater:
         """Finds replacements of IPUs relying on changes of IPU number"""
         logging.info("Looking for IPU replacement...")
         counter_name = "IPU_replacement"
-        active_sheet = self.table.workbook.active
-        gvs_accounts = sorted({r.account for r in self._records})
+        active_sheet = self.sheet
+        gvs_accounts = sorted({str(r.account) for r in self._records})
         for gvs_account in gvs_accounts:
             counters: list[GvsIpuMetric] = [
                 r for r in self._records if r.account == gvs_account
@@ -253,6 +260,6 @@ class FilledTableUpdater:
                             {correction.account} {correction.date}"
                     )
             accural_row = account_date_accurals[0]
-            cell = self.table.workbook.active[f"AT{accural_row.row_num}"]
+            cell = self.sheet[f"AT{accural_row.row_num}"]
             cell.value = accural_row.closing_balance - float(correction.closing_balance)
             self.changes_counter.update([counter_name])

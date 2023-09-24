@@ -41,7 +41,7 @@ class MonthYear:
         return f"{self.month:02d}.{self.year}"
 
 
-class Services(StrEnum):
+class Service(StrEnum):
     HEATING = "Отопление"
     GVS = "Тепловая энергия для подогрева воды"
     GVS_ELEVATED = "Тепловая энергия для подогрева воды (повышенный %)"

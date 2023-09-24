@@ -12,7 +12,7 @@ from os.path import basename
 from typing import Mapping
 
 from lib.buildingsfile import BuildingRecord, BuildingsFile
-from lib.datatypes import MonthYear, Services
+from lib.datatypes import MonthYear, Service
 from lib.detailsfile import (
     AccountDetailsFileSingleton,
     GvsDetailsFileSingleton,
@@ -20,7 +20,6 @@ from lib.detailsfile import (
 )
 from lib.errormessage import ErrorMessageConsoleHandler
 from lib.exceptions import NoAddressRow, NoServiceRow, ZeroDataResultRow
-from lib.filledresultfile import AccountClosingBalance, FilledTableUpdater, GvsIpuMetric
 from lib.heatingcorrections import (
     HeatingCorrectionAccountStatus,
     HeatingCorrectionRecord,
@@ -39,7 +38,9 @@ from lib.osvfile import (
     osvdata_regexp_compiled,
 )
 from lib.reaccural import Reaccural
-from lib.resultfile import (
+from results.workbook import ResultWorkBook
+from results import ResultSheet
+from results.calculations import (
     GvsElevatedResultRow,
     GvsMultipleResultFirstRow,
     GvsMultipleResultSecondRow,
@@ -53,8 +54,12 @@ from lib.resultfile import (
     HeatingPositiveCorrectionResultRow,
     HeatingReaccuralResultRow,
     HeatingResultRow,
-    ResultFile,
     ResultRecordType,
+)
+from results.filledworkbook import (
+    AccountClosingBalance,
+    WorkBookDataUpdater,
+    GvsIpuMetric,
 )
 
 CONFIG_PATH = "./config.ini"
@@ -132,7 +137,7 @@ class RegionDir:
             else:
                 logging.critical("Non *.xlsx found in OSV_DIR, exiting")
                 sys.exit(1)
-        self.results = ResultFile(self.base_dir, self.conf)
+        self.results = ResultWorkBook(self.base_dir, self.conf)
 
     def _get_osv_column_indexes(self) -> ColumnIndex:
         "Calculates indexes of columns in the table"
@@ -211,7 +216,7 @@ class RegionDir:
             return
         self.account_details.seen_opening_balance.append(service)
         match service:
-            case Services.HEATING:
+            case Service.HEATING:
                 row = HeatingOpeningBalanceResultRow(
                     self.osv_file.date,
                     self.osv.address_record,
@@ -220,7 +225,7 @@ class RegionDir:
                     self.buildings,
                     service,
                 )
-            case Services.GVS | Services.GVS_ELEVATED:
+            case Service.GVS | Service.GVS_ELEVATED:
                 gvs_details = GvsDetailsFileSingleton(
                     os.path.join(
                         self.base_dir,
@@ -247,7 +252,7 @@ class RegionDir:
                 )
             case _:
                 raise NotImplementedError
-        self.results.add_row(row)
+        self.results.calculations.add_row(row)
 
     def _process_heating(self):
         if not any(
@@ -258,7 +263,7 @@ class RegionDir:
             )
         ):
             return
-        service = Services.HEATING
+        service = Service.HEATING
         try:
             heating_row = HeatingResultRow(
                 self.osv_file.date,
@@ -269,7 +274,7 @@ class RegionDir:
                 self.buildings,
                 service,
             )
-            self.results.add_row(heating_row)
+            self.results.calculations.add_row(heating_row)
         except NoServiceRow:
             pass
         self._add_initial_balance_row(service)
@@ -284,7 +289,7 @@ class RegionDir:
             )
         ):
             return
-        service = Services.GVS
+        service = Service.GVS
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -324,7 +329,7 @@ class RegionDir:
                         self.buildings,
                         service,
                     )
-                    self.results.add_row(gvs_row)
+                    self.results.calculations.add_row(gvs_row)
             case 1:
                 gvs_row = GvsSingleResultRow(
                     self.osv_file.date,
@@ -335,7 +340,7 @@ class RegionDir:
                     self.buildings,
                     service,
                 )
-                self.results.add_row(gvs_row)
+                self.results.calculations.add_row(gvs_row)
             case 2:
                 for num, gvs_details_row in enumerate(gvs_details_rows):
                     if not num:
@@ -358,15 +363,15 @@ class RegionDir:
                             self.buildings,
                             service,
                         )
-                    self.results.add_row(gvs_row)
+                    self.results.calculations.add_row(gvs_row)
         self._add_initial_balance_row(service)
 
     def _process_gvs_reaccural(self, record_type: ResultRecordType):
         match record_type:
             case ResultRecordType.GVS_REACCURAL:
-                service = Services.GVS
+                service = Service.GVS
             case ResultRecordType.GVS_REACCURAL_ELEVATED:
-                service = Services.GVS_ELEVATED
+                service = Service.GVS_ELEVATED
             case _:
                 raise ValueError("Unknown result record type")
         try:
@@ -417,10 +422,10 @@ class RegionDir:
                 gvs_reaccural_row.set_field(
                     38, "Не удалось разложить начисление на месяцы"
                 )
-            self.results.add_row(gvs_reaccural_row)
+            self.results.calculations.add_row(gvs_reaccural_row)
 
     def _process_gvs_elevated(self):
-        service = Services.GVS_ELEVATED
+        service = Service.GVS_ELEVATED
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -445,13 +450,13 @@ class RegionDir:
                 self.buildings,
                 service,
             )
-            self.results.add_row(row)
+            self.results.calculations.add_row(row)
         except (NoServiceRow, ZeroDataResultRow):
             pass
         self._add_initial_balance_row(service)
 
     def _create_heating_reaccural_record(self, correction_date, correction_sum):
-        service = Services.HEATING
+        service = Service.HEATING
         row = HeatingReaccuralResultRow(
             correction_date,
             self.osv.address_record,
@@ -460,10 +465,10 @@ class RegionDir:
             correction_sum,
             service,
         )
-        self.results.add_row(row)
+        self.results.calculations.add_row(row)
 
     def _process_heating_correction(self):
-        service = Services.HEATING
+        service = Service.HEATING
         if self.osv_file.date.month != self.building_record.correction_month:
             return
         try:
@@ -532,7 +537,7 @@ class RegionDir:
                 service,
                 self.buildings,
             )
-            self.results.add_row(row)
+            self.results.calculations.add_row(row)
         if is_positive_correction:
             self._add_future_installment_records(service)
             # self._add_closing_balance_records(service)
@@ -579,7 +584,7 @@ class RegionDir:
                     total_future_installment,
                     self.buildings,
                 )
-                self.results.add_row(row)
+                self.results.calculations.add_row(row)
                 if month_num == account_closing_month:
                     last_total_future_installment = total_future_installment
                     total_future_installment = Decimal("0.00")
@@ -598,7 +603,7 @@ class RegionDir:
                         total_future_installment,
                         self.buildings,
                     )
-                    self.results.add_row(row)
+                    self.results.calculations.add_row(row)
                     try:
                         next_month_reaccural = Decimal(
                             self.account_details.get_service_month_reaccural(
@@ -623,7 +628,7 @@ class RegionDir:
                             service,
                             self.buildings,
                         )
-                        self.results.add_row(row)
+                        self.results.calculations.add_row(row)
                     break
         else:
             correction_date = self.osv_file.date
@@ -642,7 +647,7 @@ class RegionDir:
                 total_future_installment,
                 self.buildings,
             )
-            self.results.add_row(row)
+            self.results.calculations.add_row(row)
 
     def _add_closing_balance_records(self, service):
         for cur_year, start_month in [
@@ -679,7 +684,7 @@ class RegionDir:
                     service,
                     self.buildings,
                 )
-                self.results.add_row(row)
+                self.results.calculations.add_row(row)
 
     def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
@@ -772,7 +777,7 @@ if __name__ == "__main__":
                 os.path.join(config["DEFAULT"]["base_dir"], section), config[section]
             )
             region.read_osvs()
-            filled_table = FilledTableUpdater(region.results)
+            filled_table = WorkBookDataUpdater(region.results, ResultSheet.CALCULATIONS)
             filled_table.prepare_records_cache(
                 GvsIpuMetric,
                 filter_func=lambda s: s.type_name == ResultRecordType.GVS_ACCURAL.name,
