@@ -12,7 +12,7 @@ from os.path import basename
 from typing import Mapping
 
 from lib.buildingsfile import BuildingRecord, BuildingsFile
-from lib.datatypes import MonthYear, Service
+from lib.datatypes import MonthYear, Services
 from lib.detailsfile import (
     AccountDetailsFileSingleton,
     GvsDetailsFileSingleton,
@@ -211,7 +211,7 @@ class RegionDir:
             return
         self.account_details.seen_opening_balance.append(service)
         match service:
-            case Service.HEATING:
+            case Services.HEATING:
                 row = HeatingOpeningBalanceResultRow(
                     self.osv_file.date,
                     self.osv.address_record,
@@ -220,7 +220,7 @@ class RegionDir:
                     self.buildings,
                     service,
                 )
-            case Service.GVS | Service.GVS_ELEVATED:
+            case Services.GVS | Services.GVS_ELEVATED:
                 gvs_details = GvsDetailsFileSingleton(
                     os.path.join(
                         self.base_dir,
@@ -258,7 +258,7 @@ class RegionDir:
             )
         ):
             return
-        service = Service.HEATING
+        service = Services.HEATING
         try:
             heating_row = HeatingResultRow(
                 self.osv_file.date,
@@ -284,7 +284,7 @@ class RegionDir:
             )
         ):
             return
-        service = Service.GVS
+        service = Services.GVS
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -364,9 +364,9 @@ class RegionDir:
     def _process_gvs_reaccural(self, record_type: ResultRecordType):
         match record_type:
             case ResultRecordType.GVS_REACCURAL:
-                service = Service.GVS
+                service = Services.GVS
             case ResultRecordType.GVS_REACCURAL_ELEVATED:
-                service = Service.GVS_ELEVATED
+                service = Services.GVS_ELEVATED
             case _:
                 raise ValueError("Unknown result record type")
         try:
@@ -420,7 +420,7 @@ class RegionDir:
             self.results.add_row(gvs_reaccural_row)
 
     def _process_gvs_elevated(self):
-        service = Service.GVS_ELEVATED
+        service = Services.GVS_ELEVATED
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
@@ -451,7 +451,7 @@ class RegionDir:
         self._add_initial_balance_row(service)
 
     def _create_heating_reaccural_record(self, correction_date, correction_sum):
-        service = Service.HEATING
+        service = Services.HEATING
         row = HeatingReaccuralResultRow(
             correction_date,
             self.osv.address_record,
@@ -463,7 +463,7 @@ class RegionDir:
         self.results.add_row(row)
 
     def _process_heating_correction(self):
-        service = Service.HEATING
+        service = Services.HEATING
         if self.osv_file.date.month != self.building_record.correction_month:
             return
         try:
