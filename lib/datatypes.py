@@ -40,8 +40,14 @@ class MonthYear:
     def __str__(self) -> str:
         return f"{self.month:02d}.{self.year}"
 
+    @property
+    def first_day(self) -> str:
+        "Returns the first day of the month as str"
+        return f"01.{str(self)}"
+
 
 class Service(StrEnum):
+    "Services enumerator"
     HEATING = "Отопление"
     GVS = "Тепловая энергия для подогрева воды"
     GVS_ELEVATED = "Тепловая энергия для подогрева воды (повышенный %)"

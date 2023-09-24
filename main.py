@@ -38,6 +38,7 @@ from lib.osvfile import (
     osvdata_regexp_compiled,
 )
 from lib.reaccural import Reaccural
+from results.accounts import AccountsResultRow
 from results.workbook import ResultWorkBook
 from results import ResultSheet
 from results.calculations import (
@@ -54,7 +55,7 @@ from results.calculations import (
     HeatingPositiveCorrectionResultRow,
     HeatingReaccuralResultRow,
     HeatingResultRow,
-    ResultRecordType,
+    CalculationRecordType,
 )
 from results.filledworkbook import (
     AccountClosingBalance,
@@ -76,6 +77,9 @@ class ColumnIndex:
     gvs_elevated_percent: int
 
 
+AccountChangebleInfo = tuple[str, str]
+
+
 class RegionDir:
     "A directory with the data of a particular region"
 
@@ -84,6 +88,7 @@ class RegionDir:
     osv: OsvRecord
     account: str
     building_record: BuildingRecord
+    seen_account_info: dict[str, AccountChangebleInfo]
 
     def __init__(self, base_dir: str, conf: Mapping[str, str]) -> None:
         logging.info("Initialazing %s region data...", base_dir)
@@ -91,6 +96,7 @@ class RegionDir:
         self.base_dir = base_dir
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
         self.error_handler = ErrorMessageConsoleHandler()
+        self.seen_account_info = dict()
         self.buildings: BuildingsFile = BuildingsFile(
             os.path.join(self.base_dir, conf["file.buildings"]),
             1,
@@ -203,12 +209,21 @@ class RegionDir:
         return OsvRecord(osv_address_rec, osv_accural_rec)
 
     def _is_debugging_current_account(self):
-        "Checks of single account debugging is enabled in config file"
+        "Checks if single account debugging is enabled in config file"
         try:
             if config["DEFAULT"]["account"] == self.osv.address_record.account:
                 return True
         except KeyError:
             return True
+        return False
+
+    def is_debugging_account_list(self):
+        "Checks if account list debugging is enabled in config file"
+        try:
+            if config["DEFAULT"]["account_list_debug"]:
+                return True
+        except KeyError:
+            return False
         return False
 
     def _add_initial_balance_row(self, service):
@@ -366,11 +381,11 @@ class RegionDir:
                     self.results.calculations.add_row(gvs_row)
         self._add_initial_balance_row(service)
 
-    def _process_gvs_reaccural(self, record_type: ResultRecordType):
+    def _process_gvs_reaccural(self, record_type: CalculationRecordType):
         match record_type:
-            case ResultRecordType.GVS_REACCURAL:
+            case CalculationRecordType.GVS_REACCURAL:
                 service = Service.GVS
-            case ResultRecordType.GVS_REACCURAL_ELEVATED:
+            case CalculationRecordType.GVS_REACCURAL_ELEVATED:
                 service = Service.GVS_ELEVATED
             case _:
                 raise ValueError("Unknown result record type")
@@ -686,6 +701,18 @@ class RegionDir:
                 )
                 self.results.calculations.add_row(row)
 
+    def _add_account_change_record(self):
+        rec = self.osv.address_record
+        account_data: AccountChangebleInfo = (rec.name, rec.population)
+        if (
+            rec.account in self.seen_account_info
+            and self.seen_account_info[rec.account] == account_data
+        ):
+            return
+        self.seen_account_info[rec.account] = account_data
+        row = AccountsResultRow(self.osv_file.date, rec)
+        self.results.accounts.add_row(row)
+
     def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
         self.osv_file = OsvFile(osv_file_name, self.conf)
@@ -720,11 +747,14 @@ class RegionDir:
                 self.osv.address_record.address,
                 str(self.osv_file.date.year),
             )
+            self._add_account_change_record()
+            if self.is_debugging_account_list():
+                continue
             self._process_heating()
             self._process_gvs()
-            self._process_gvs_reaccural(ResultRecordType.GVS_REACCURAL)
+            self._process_gvs_reaccural(CalculationRecordType.GVS_REACCURAL)
             self._process_gvs_elevated()
-            self._process_gvs_reaccural(ResultRecordType.GVS_REACCURAL_ELEVATED)
+            self._process_gvs_reaccural(CalculationRecordType.GVS_REACCURAL_ELEVATED)
             self._process_heating_correction()
         self.osv_file.close()
 
@@ -777,18 +807,22 @@ if __name__ == "__main__":
                 os.path.join(config["DEFAULT"]["base_dir"], section), config[section]
             )
             region.read_osvs()
+            if region.is_debugging_account_list():
+                region.results.save()
+                continue
             filled_table = WorkBookDataUpdater(region.results, ResultSheet.CALCULATIONS)
             filled_table.prepare_records_cache(
                 GvsIpuMetric,
-                filter_func=lambda s: s.type_name == ResultRecordType.GVS_ACCURAL.name,
+                filter_func=lambda s: s.type_name
+                == CalculationRecordType.GVS_ACCURAL.name,
             )
             filled_table.find_gvs_ipu_replacements()
             filled_table.prepare_records_cache(
                 AccountClosingBalance,
                 filter_func=lambda s: s.type_name
                 in (
-                    ResultRecordType.HEATING_ACCURAL.name,
-                    ResultRecordType.HEATING_POSITIVE_CORRECTION.name,
+                    CalculationRecordType.HEATING_ACCURAL.name,
+                    CalculationRecordType.HEATING_POSITIVE_CORRECTION.name,
                 ),
             )
             filled_table.decrease_closing_balance()

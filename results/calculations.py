@@ -1,8 +1,8 @@
-"Calculations list of the workbook"
+"Calculations list of the resulting workbook"
+
 
 from decimal import Decimal
 from enum import Enum
-from typing import Any
 
 
 from lib.buildingsfile import BuildingRecord, BuildingsFile
@@ -11,11 +11,12 @@ from lib.detailsfile import AccountDetailsFileSingleton, GvsDetailsRecord
 from lib.exceptions import NoServiceRow, ZeroDataResultRow
 from lib.osvfile import OsvAccuralRecord, OsvAddressRecord
 from lib.reaccural import ReaccuralType
+from results.resultrow import ResultRow
 
 GvsIpuInstallDates: dict[str, str] = {}
 
 
-class ResultRecordType(Enum):
+class CalculationRecordType(Enum):
     "Types of rows in result file"
     HEATING_ACCURAL = 1
     HEATING_REACCURAL = 2
@@ -31,17 +32,8 @@ class ResultRecordType(Enum):
     GVS_OPENING_BALANCE = 12
 
 
-class BaseResultRow:
+class CalculationsResultRow(ResultRow):
     "Base class for a row of result table"
-    MAX_FIELDS = 47
-
-    def set_field(self, ind: int, value: str | int | float | Decimal | None = None):
-        "Field setter by field number"
-        setattr(self, f"f{ind:02d}", value)
-
-    def get_field(self, ind: int) -> str | None:
-        "Field getter by field number"
-        return getattr(self, f"f{ind:02d}")
 
     def __init__(
         self,
@@ -50,8 +42,7 @@ class BaseResultRow:
         buildings: BuildingsFile,
         use_reduction_factor: bool = False,
     ) -> None:
-        for ind in range(self.MAX_FIELDS):
-            setattr(self, f"f{ind:02d}", None)
+        super().__init__(max_fields=47)
         self.set_field(0, date.month)
         self.set_field(1, date.year)
         self.set_field(2, data.account)
@@ -60,13 +51,6 @@ class BaseResultRow:
         self.set_field(7, date.year)
         self.price = buildings.get_tariff(data.address, date, use_reduction_factor)
         self.set_field(8, self.price)
-
-    def as_list(self) -> list[Any]:
-        "Returns list of all fields"
-        result = []
-        for ind in range(self.MAX_FIELDS):
-            result.append(getattr(self, f"f{ind:02d}"))
-        return result
 
     def _set_odpu_fields(self) -> None:
         self.set_field(9, "Общедомовый")
@@ -79,7 +63,7 @@ class BaseResultRow:
         self.set_field(16, 3)
 
 
-class HeatingResultRow(BaseResultRow):
+class HeatingResultRow(CalculationsResultRow):
     "Result row for Heating service"
 
     def __init__(
@@ -93,7 +77,7 @@ class HeatingResultRow(BaseResultRow):
         service: str,
     ) -> None:
         super().__init__(date, data, buildings)
-        self.set_field(4, ResultRecordType.HEATING_ACCURAL.name)
+        self.set_field(4, CalculationRecordType.HEATING_ACCURAL.name)
         self.set_field(5, service)
         # chapter 2:
         if has_odpu:
@@ -136,7 +120,7 @@ class HeatingResultRow(BaseResultRow):
         )
 
 
-class HeatingOpeningBalanceResultRow(BaseResultRow):
+class HeatingOpeningBalanceResultRow(CalculationsResultRow):
     """
     Result row for Heating service opening balance on date of the oldest OSV-file
     An opening balance of the current month ("date" parameter, eg. 01.2020) goes
@@ -153,7 +137,7 @@ class HeatingOpeningBalanceResultRow(BaseResultRow):
         service: str,
     ) -> None:
         super().__init__(date.previous, data, buildings)
-        self.set_field(4, ResultRecordType.HEATING_OPENING_BALANCE.name)
+        self.set_field(4, CalculationRecordType.HEATING_OPENING_BALANCE.name)
         self.set_field(5, service)
         if has_odpu:
             self._set_odpu_fields()
@@ -166,7 +150,7 @@ class HeatingOpeningBalanceResultRow(BaseResultRow):
         self.set_field(45, opening_balance)
 
 
-class GvsOpeningBalanceResultRow(BaseResultRow):
+class GvsOpeningBalanceResultRow(CalculationsResultRow):
     """
     Result row for GVS and GVS elevated % services opening balance on date of the oldest OSV-file
     An opening balance of the current month ("date" parameter, eg. 01.2020) goes
@@ -183,7 +167,7 @@ class GvsOpeningBalanceResultRow(BaseResultRow):
         service: str,
     ) -> None:
         super().__init__(date.previous, data, buildings, use_reduction_factor=True)
-        self.set_field(4, ResultRecordType.GVS_OPENING_BALANCE.name)
+        self.set_field(4, CalculationRecordType.GVS_OPENING_BALANCE.name)
         self.set_field(5, service)
         # chapter 3:
         gvs = gvs_details_row
@@ -209,7 +193,7 @@ class GvsOpeningBalanceResultRow(BaseResultRow):
         self.set_field(45, opening_balance)
 
 
-class HeatingReaccuralResultRow(BaseResultRow):
+class HeatingReaccuralResultRow(CalculationsResultRow):
     "Result row for heating reaccural"
 
     def __init__(
@@ -222,7 +206,7 @@ class HeatingReaccuralResultRow(BaseResultRow):
         service: str,
     ) -> None:
         super().__init__(date, data, buildings)
-        self.set_field(4, ResultRecordType.HEATING_REACCURAL.name)
+        self.set_field(4, CalculationRecordType.HEATING_REACCURAL.name)
         self.set_field(5, service)
         self.set_field(6, date.previous.month)
         self.set_field(7, date.previous.year)
@@ -255,7 +239,7 @@ class HeatingReaccuralResultRow(BaseResultRow):
         self.set_field(37, accural_sum)
 
 
-class GvsSingleResultRow(BaseResultRow):
+class GvsSingleResultRow(CalculationsResultRow):
     "Result row for GVS service for cases where there is only one GVS details record"
 
     @staticmethod
@@ -273,7 +257,7 @@ class GvsSingleResultRow(BaseResultRow):
         service: str,
     ) -> None:
         super().__init__(date, data, buildings, use_reduction_factor=True)
-        self.set_field(4, ResultRecordType.GVS_ACCURAL.name)
+        self.set_field(4, CalculationRecordType.GVS_ACCURAL.name)
         self.set_field(5, service)
         # chapter 3:
         gvs = gvs_details_row
@@ -385,7 +369,7 @@ class GvsMultipleResultSecondRow(GvsSingleResultRow):
             self.set_field(i, None)
 
 
-class GvsReaccuralResultRow(BaseResultRow):
+class GvsReaccuralResultRow(CalculationsResultRow):
     "Result row for GVS reaccural"
 
     def __init__(
@@ -459,7 +443,7 @@ class GvsElevatedResultRow(GvsSingleResultRow):
         super().__init__(
             date, data, accural, account_details, gvs_details_row, buildings, service
         )
-        self.set_field(4, ResultRecordType.GVS_ELEVATED.name)
+        self.set_field(4, CalculationRecordType.GVS_ELEVATED.name)
         self.set_field(5, service)
         # chapter 3:
         gvs = gvs_details_row
@@ -503,7 +487,7 @@ class GvsElevatedResultRow(GvsSingleResultRow):
             raise ZeroDataResultRow
 
 
-class HeatingCorrectionResultRow(BaseResultRow):
+class HeatingCorrectionResultRow(CalculationsResultRow):
     "Result row for heating last-year correction"
     rounding_error: list = [0.0]
 
@@ -519,7 +503,7 @@ class HeatingCorrectionResultRow(BaseResultRow):
         buildings: BuildingsFile,
     ) -> None:
         super().__init__(date, data, buildings)
-        self.set_field(4, ResultRecordType.HEATING_CORRECTION.name)
+        self.set_field(4, CalculationRecordType.HEATING_CORRECTION.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
@@ -546,7 +530,7 @@ class HeatingCorrectionResultRow(BaseResultRow):
         self.set_field(37, accural_sum)
 
 
-class HeatingNegativeCorrectionZeroResultRow(BaseResultRow):
+class HeatingNegativeCorrectionZeroResultRow(CalculationsResultRow):
     "Result row for heating last-year correction closing balance only record"
 
     def __init__(
@@ -559,7 +543,7 @@ class HeatingNegativeCorrectionZeroResultRow(BaseResultRow):
         buildings: BuildingsFile,
     ) -> None:
         super().__init__(date, data, buildings)
-        self.set_field(4, ResultRecordType.HEATING_CORRECTION_ZERO.name)
+        self.set_field(4, CalculationRecordType.HEATING_CORRECTION_ZERO.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
@@ -572,7 +556,7 @@ class HeatingNegativeCorrectionZeroResultRow(BaseResultRow):
         )
 
 
-class HeatingPositiveCorrectionResultRow(BaseResultRow):
+class HeatingPositiveCorrectionResultRow(CalculationsResultRow):
     "Result row for heating last-year correction closing balance only record"
 
     def __init__(
@@ -588,7 +572,7 @@ class HeatingPositiveCorrectionResultRow(BaseResultRow):
     ) -> None:
         super().__init__(date, data, buildings)
         self.set_field(0, correction_date.month)
-        self.set_field(4, ResultRecordType.HEATING_POSITIVE_CORRECTION.name)
+        self.set_field(4, CalculationRecordType.HEATING_POSITIVE_CORRECTION.name)
         self.set_field(5, service)
         self.set_field(6, correction_date.month)
         self.set_field(7, correction_date.year)
@@ -602,7 +586,7 @@ class HeatingPositiveCorrectionResultRow(BaseResultRow):
         self.set_field(46, total_future_installment)
 
 
-class HeatingPositiveCorrectionExcessiveReaccuralResultRow(BaseResultRow):
+class HeatingPositiveCorrectionExcessiveReaccuralResultRow(CalculationsResultRow):
     "Result row for reaccural that can not be distributed to correction rows"
 
     def __init__(
@@ -616,7 +600,8 @@ class HeatingPositiveCorrectionExcessiveReaccuralResultRow(BaseResultRow):
     ) -> None:
         super().__init__(date, data, buildings)
         self.set_field(
-            4, ResultRecordType.HEATING_POSITIVE_CORRECTION_EXCESSIVE_REACCURAL.name
+            4,
+            CalculationRecordType.HEATING_POSITIVE_CORRECTION_EXCESSIVE_REACCURAL.name,
         )
         self.set_field(5, service)
         self.set_field(6, correction_date.month)

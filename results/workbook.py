@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 
 from lib.helpers import BaseWorkBook
 from results import ResultSheet
-from results.calculations import BaseResultRow
+from results.resultrow import ResultRow
 
 
 class ResultWorkBookSheet:
@@ -17,7 +17,7 @@ class ResultWorkBookSheet:
     def __init__(self, sheet) -> None:
         self.sheet = sheet
 
-    def add_row(self, row: BaseResultRow):
+    def add_row(self, row: ResultRow):
         "Adds row to table"
         self.sheet.append(row.as_list())
 
