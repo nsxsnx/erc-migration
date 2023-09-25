@@ -90,6 +90,12 @@ class RegionDir:
     building_record: BuildingRecord
     seen_account_info: dict[str, AccountChangebleInfo]
 
+    def is_config_option_true(self, option_name: str) -> bool:
+        "Returns option bool value if it is set in config file"
+        if option_name in self.conf:
+            return bool(self.conf[option_name])
+        return False
+
     def __init__(self, base_dir: str, conf: Mapping[str, str]) -> None:
         logging.info("Initialazing %s region data...", base_dir)
         self.conf = {k: v.strip() for k, v in conf.items()}
@@ -215,15 +221,6 @@ class RegionDir:
                 return True
         except KeyError:
             return True
-        return False
-
-    def is_debugging_account_list(self):
-        "Checks if account list debugging is enabled in config file"
-        try:
-            if config["DEFAULT"]["account_list_debug"]:
-                return True
-        except KeyError:
-            return False
         return False
 
     def _add_initial_balance_row(self, service):
@@ -747,15 +744,19 @@ class RegionDir:
                 self.osv.address_record.address,
                 str(self.osv_file.date.year),
             )
-            self._add_account_change_record()
-            if self.is_debugging_account_list():
-                continue
-            self._process_heating()
-            self._process_gvs()
-            self._process_gvs_reaccural(CalculationRecordType.GVS_REACCURAL)
-            self._process_gvs_elevated()
-            self._process_gvs_reaccural(CalculationRecordType.GVS_REACCURAL_ELEVATED)
-            self._process_heating_correction()
+            if self.is_config_option_true("fill_accounts"):
+                self._add_account_change_record()
+            if self.is_config_option_true("fill_people"):
+                pass
+            if self.is_config_option_true("fill_calculations"):
+                self._process_heating()
+                self._process_gvs()
+                self._process_gvs_reaccural(CalculationRecordType.GVS_REACCURAL)
+                self._process_gvs_elevated()
+                self._process_gvs_reaccural(
+                    CalculationRecordType.GVS_REACCURAL_ELEVATED
+                )
+                self._process_heating_correction()
         self.osv_file.close()
 
     def read_osvs(self) -> None:
@@ -807,7 +808,7 @@ if __name__ == "__main__":
                 os.path.join(config["DEFAULT"]["base_dir"], section), config[section]
             )
             region.read_osvs()
-            if region.is_debugging_account_list():
+            if not region.is_config_option_true("fill_calculations"):
                 region.results.save()
                 continue
             filled_table = WorkBookDataUpdater(region.results, ResultSheet.CALCULATIONS)
