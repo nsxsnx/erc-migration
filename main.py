@@ -39,6 +39,7 @@ from lib.osvfile import (
 )
 from lib.reaccural import Reaccural
 from results.accounts import AccountsResultRow
+from results.people import PeopleResultRow
 from results.workbook import ResultWorkBook
 from results import ResultSheet
 from results.calculations import (
@@ -707,8 +708,12 @@ class RegionDir:
         ):
             return
         self.seen_account_info[rec.account] = account_data
-        row = AccountsResultRow(self.osv_file.date, rec)
-        self.results.accounts.add_row(row)
+        if self.is_config_option_true("fill_accounts"):
+            row = AccountsResultRow(self.osv_file.date, rec)
+            self.results.accounts.add_row(row)
+        if self.is_config_option_true("fill_people"):
+            row = PeopleResultRow(self.osv_file.date, rec)
+            self.results.people.add_row(row)
 
     def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
@@ -744,10 +749,7 @@ class RegionDir:
                 self.osv.address_record.address,
                 str(self.osv_file.date.year),
             )
-            if self.is_config_option_true("fill_accounts"):
-                self._add_account_change_record()
-            if self.is_config_option_true("fill_people"):
-                pass
+            self._add_account_change_record()
             if self.is_config_option_true("fill_calculations"):
                 self._process_heating()
                 self._process_gvs()

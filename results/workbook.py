@@ -39,6 +39,7 @@ class ResultWorkBook(BaseWorkBook):
         self.workbook = load_workbook(filename=self.file_name_full)
         self.calculations = ResultWorkBookSheet(self.workbook[ResultSheet.CALCULATIONS])
         self.accounts = ResultWorkBookSheet(self.workbook[ResultSheet.ACCOUNTS])
+        self.people = ResultWorkBookSheet(self.workbook[ResultSheet.PEOPLE])
 
     def save(self) -> None:
         """Saves result table data to disk"""

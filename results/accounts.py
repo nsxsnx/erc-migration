@@ -1,4 +1,6 @@
 "Accounts list of the resulting workbook"
+
+
 from dataclasses import dataclass
 import re
 
@@ -20,7 +22,7 @@ class StreetAddress:
 
 
 class AccountsResultRow(ResultRow):
-    "Base class for a row of result table"
+    "Row of Accounts sheet"
 
     def _get_address(self, address: str) -> StreetAddress:
         match = re.match(STREET_ADDRESS_REGEXP, address)
