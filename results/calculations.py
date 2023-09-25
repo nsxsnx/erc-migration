@@ -1,4 +1,4 @@
-"Calculations list of the resulting workbook"
+"Calculations sheet of the resulting workbook"
 
 
 from decimal import Decimal

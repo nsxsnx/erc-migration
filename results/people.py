@@ -1,4 +1,4 @@
-"People list of the resulting workbook"
+"People sheet of the resulting workbook"
 
 
 from lib.datatypes import MonthYear

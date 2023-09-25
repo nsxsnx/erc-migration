@@ -1,4 +1,4 @@
-"Accounts list of the resulting workbook"
+"Accounts sheet of the resulting workbook"
 
 
 from dataclasses import dataclass
