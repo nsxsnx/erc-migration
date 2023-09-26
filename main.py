@@ -104,6 +104,7 @@ class RegionDir:
         self.osv_path = os.path.join(self.base_dir, self.conf["osv.dir"])
         self.error_handler = ErrorMessageConsoleHandler()
         self.seen_account_info = dict()
+        self.seen_people_names = dict()
         self.buildings: BuildingsFile = BuildingsFile(
             os.path.join(self.base_dir, conf["file.buildings"]),
             1,
@@ -699,7 +700,7 @@ class RegionDir:
                 )
                 self.results.calculations.add_row(row)
 
-    def _add_account_change_record(self):
+    def _add_accounts_record(self):
         rec = self.osv.address_record
         account_data: AccountChangebleInfo = (rec.name, rec.population)
         if (
@@ -708,11 +709,28 @@ class RegionDir:
         ):
             return
         self.seen_account_info[rec.account] = account_data
-        if self.is_config_option_true("fill_accounts"):
-            row = AccountsResultRow(self.osv_file.date, rec)
-            self.results.accounts.add_row(row)
-        if self.is_config_option_true("fill_people"):
-            row = PeopleResultRow(self.osv_file.date, rec)
+        row = AccountsResultRow(self.osv_file.date, rec)
+        self.results.accounts.add_row(row)
+
+    def _add_people_records(self):
+        fio_delimeter = ";"
+        rec = self.osv.address_record
+        if not rec.name:
+            return
+        if fio_delimeter not in rec.name:
+            return
+        if (
+            rec.account in self.seen_people_names
+            and self.seen_people_names[rec.account] == rec.name
+        ):
+            return
+        self.seen_people_names[rec.account] = rec.name
+        names = rec.name.split(fio_delimeter)
+        for name in names:
+            name = name.strip()
+            if not name:
+                continue
+            row = PeopleResultRow(self.osv_file.date, rec, name)
             self.results.people.add_row(row)
 
     def _process_osv(self, osv_file_name) -> None:
@@ -749,7 +767,10 @@ class RegionDir:
                 self.osv.address_record.address,
                 str(self.osv_file.date.year),
             )
-            self._add_account_change_record()
+            if self.is_config_option_true("fill_accounts"):
+                self._add_accounts_record()
+            if self.is_config_option_true("fill_people"):
+                self._add_people_records()
             if self.is_config_option_true("fill_calculations"):
                 self._process_heating()
                 self._process_gvs()

@@ -95,7 +95,9 @@ class OsvFile(BaseWorkBook):
 
     def get_data_row(self):
         """Generator that reads OSV-data line by line"""
-        for row in self.sheet.iter_rows(
+        if self.sheet is None:
+            raise StopIteration
+        for row in self.sheet.iter_rows(  # type:ignore
             min_row=int(self.conf["osv.header_row"]) + 1, values_only=True
         ):
             if row[1]:

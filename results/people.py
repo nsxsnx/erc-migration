@@ -13,9 +13,10 @@ class PeopleResultRow(ResultRow):
         self,
         date: MonthYear,
         data: OsvAddressRecord,
+        name: str,
     ) -> None:
         super().__init__(max_fields=4)
         self.set_field(0, date.first_day)
         self.set_field(1, data.account)
         self.set_field(2, data.address)
-        self.set_field(3, data.name)
+        self.set_field(3, name)

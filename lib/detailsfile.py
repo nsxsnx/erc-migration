@@ -105,7 +105,7 @@ class GvsDetailsRecord:
     @classmethod
     def get_dummy_instance(cls) -> Self:
         "Returns class instance wih all attributes set to None"
-        return cls(*[None] * 19)
+        return cls(*[None] * 19)  # type:ignore
 
 
 class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
