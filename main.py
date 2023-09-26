@@ -28,7 +28,7 @@ from lib.heatingcorrections import (
     HeatingVolumesOdpuFile,
     HeatingVolumesOdpuRecord,
 )
-from lib.helpers import ExcelHelpers
+from lib.helpers import BaseWorkBook, ExcelHelpers
 from lib.osvfile import (
     OSVDATA_REGEXP,
     OsvAccuralRecord,
@@ -774,22 +774,17 @@ class RegionDir:
 
     def close(self):
         "Closes all file descriptors that might still be open"
-        try:
-            self.account_details.close()
-        except AttributeError:
-            pass
-        try:
-            self.buildings.close()
-        except AttributeError:
-            pass
-        try:
-            self.osv_file.close()
-        except AttributeError:
-            pass
-        try:
-            self.results.close()
-        except AttributeError:
-            pass
+
+        def _close(obj: BaseWorkBook):
+            try:
+                obj.close()
+            except AttributeError:
+                pass
+
+        _close(self.account_details)
+        _close(self.buildings)
+        _close(self.osv_file)
+        _close(self.results)
 
 
 if __name__ == "__main__":
