@@ -17,7 +17,7 @@ from lib.detailsfile import (
     GvsDetailsRecord,
 )
 from lib.errormessage import ErrorMessageConsoleHandler
-from lib.exceptions import NoAddressRow, NoServiceRow, ZeroDataResultRow
+from lib.exceptions import NoServiceRow, ZeroDataResultRow
 from lib.heatingcorrections import (
     HeatingCorrectionAccountStatus,
     HeatingCorrectionRecord,
@@ -29,12 +29,8 @@ from lib.heatingcorrections import (
 from lib.helpers import BaseWorkBook
 from lib.osvfile import (
     OSVDATA_REGEXP,
-    OsvAccuralRecord,
-    OsvAddressRecord,
-    OsvColumnIndex,
     OsvFile,
     OsvPath,
-    OsvRecord,
     osvdata_regexp_compiled,
 )
 from lib.reaccural import Reaccural
@@ -74,8 +70,7 @@ class RegionDir:
     "A directory with the data of a particular region"
 
     account_details: AccountDetailsFileSingleton
-    osv_file: OsvFile
-    osv: OsvRecord
+    osv: OsvFile
     account: str
     building_record: BuildingRecord
     seen_account_info: dict[str, AccountChangebleInfo]
@@ -84,6 +79,15 @@ class RegionDir:
         "Returns option bool value if it is set in config file"
         if option_name in self.conf:
             return bool(self.conf[option_name])
+        return False
+
+    def _is_debugging_account(self, account: str):
+        "Returns True if debugging is enabled in config file for a given `account`"
+        try:
+            if config["DEFAULT"]["account"] == account:
+                return True
+        except KeyError:
+            return True
         return False
 
     def __init__(self, base_dir: str, conf: Mapping[str, str]) -> None:
@@ -136,43 +140,6 @@ class RegionDir:
         _ = [file.validate() for file in self.osv_files]
         self.results = ResultWorkBook(self.base_dir, self.conf)
 
-    def _init_current_osv_row(
-        self, row, column_indexes: OsvColumnIndex
-    ) -> OsvRecord | None:
-        "Parses OSV row and returns OvsRecord instance"
-        address_cell = row[column_indexes.address]
-        try:
-            osv_address_rec = OsvAddressRecord.get_instance(address_cell)
-            logging.debug("Address record %s understood as %s", row[0], osv_address_rec)
-            try:
-                self.buildings.get_address_row(
-                    osv_address_rec.address,
-                    str(self.osv_file.date.year),
-                )
-            except NoAddressRow:
-                return None
-            osv_accural_rec = OsvAccuralRecord(
-                Decimal(row[column_indexes.heating]),
-                Decimal(row[column_indexes.gvs]),
-                Decimal(row[column_indexes.reaccurance]),
-                Decimal(row[column_indexes.total]),
-                Decimal(row[column_indexes.gvs_elevated_percent]),
-            )
-            logging.debug("Accural record %s understood as %s", row[0], osv_accural_rec)
-        except AttributeError as error:
-            logging.warning("%s. Malformed record: %s", error, row)
-            return None
-        return OsvRecord(osv_address_rec, osv_accural_rec)
-
-    def _is_debugging_current_account(self):
-        "Checks if single account debugging is enabled in config file"
-        try:
-            if config["DEFAULT"]["account"] == self.osv.address_record.account:
-                return True
-        except KeyError:
-            return True
-        return False
-
     def _add_initial_balance_row(self, service):
         if service in self.account_details.seen_opening_balance:
             return
@@ -180,8 +147,8 @@ class RegionDir:
         match service:
             case Service.HEATING:
                 row = HeatingOpeningBalanceResultRow(
-                    self.osv_file.date,
-                    self.osv.address_record,
+                    self.osv.date,
+                    self.osv.record.address,
                     self.building_record.has_odpu,
                     self.account_details,
                     self.buildings,
@@ -192,21 +159,21 @@ class RegionDir:
                     os.path.join(
                         self.base_dir,
                         self.conf["gvs.dir"],
-                        f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+                        f"{self.osv.date.month:02d}.{self.osv.date.year}.xlsx",
                     ),
                     int(self.conf["gvs_details.header_row"]),
                     lambda x: x.account,
                 )
                 gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
-                    ("account",), (self.osv.address_record.account,)
+                    ("account",), (self.osv.record.address.account,)
                 )
                 try:
                     gvs_details_row = gvs_details_rows[0]
                 except IndexError:
                     gvs_details_row = None
                 row = GvsOpeningBalanceResultRow(
-                    self.osv_file.date,
-                    self.osv.address_record,
+                    self.osv.date,
+                    self.osv.record.address,
                     self.account_details,
                     gvs_details_row,
                     self.buildings,
@@ -216,21 +183,21 @@ class RegionDir:
                 raise NotImplementedError
         self.results.calculations.add_row(row)
 
-    def _process_heating(self):
+    def _add_heating(self):
         if not any(
             (
-                self.osv.accural_record.heating,
-                self.osv.accural_record.reaccural,
-                self.osv.accural_record.payment,
+                self.osv.record.accural.heating,
+                self.osv.record.accural.reaccural,
+                self.osv.record.accural.payment,
             )
         ):
             return
         service = Service.HEATING
         try:
             heating_row = HeatingResultRow(
-                self.osv_file.date,
-                self.osv.address_record,
-                self.osv.accural_record,
+                self.osv.date,
+                self.osv.record.address,
+                self.osv.record.accural,
                 self.building_record.has_odpu,
                 self.account_details,
                 self.buildings,
@@ -241,13 +208,13 @@ class RegionDir:
             pass
         self._add_initial_balance_row(service)
 
-    def _process_gvs(self):
+    def _add_gvs(self):
         if not any(
             (
-                self.osv.accural_record.heating,
-                self.osv.accural_record.gvs,
-                self.osv.accural_record.reaccural,
-                self.osv.accural_record.payment,
+                self.osv.record.accural.heating,
+                self.osv.record.accural.gvs,
+                self.osv.record.accural.reaccural,
+                self.osv.record.accural.payment,
             )
         ):
             return
@@ -256,36 +223,36 @@ class RegionDir:
             os.path.join(
                 self.base_dir,
                 self.conf["gvs.dir"],
-                f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+                f"{self.osv.date.month:02d}.{self.osv.date.year}.xlsx",
             ),
             int(self.conf["gvs_details.header_row"]),
             lambda x: x.account,
         )
         gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
-            ("account",), (self.osv.address_record.account,)
+            ("account",), (self.osv.record.address.account,)
         )
         if len(gvs_details_rows) > 2:
             gvs_details_rows = [gvs_details_rows[0], gvs_details_rows[-1]]
             logging.warning(
                 "Too many GVS details records for account %s in %s, skipped",
                 gvs_details_rows[0].account,
-                self.osv_file.date,
+                self.osv.date,
             )
         match len(gvs_details_rows):
             case 0:
                 try:
                     closing_balance = (
                         self.account_details.get_service_month_closing_balance(
-                            self.osv_file.date, service
+                            self.osv.date, service
                         )
                     )
                 except NoServiceRow:
                     closing_balance = 0.0
-                if closing_balance or self.osv.accural_record.payment:
+                if closing_balance or self.osv.record.accural.payment:
                     gvs_row = GvsSingleResultRow(
-                        self.osv_file.date,
-                        self.osv.address_record,
-                        self.osv.accural_record,
+                        self.osv.date,
+                        self.osv.record.address,
+                        self.osv.record.accural,
                         self.account_details,
                         GvsDetailsRecord.get_dummy_instance(),
                         self.buildings,
@@ -294,9 +261,9 @@ class RegionDir:
                     self.results.calculations.add_row(gvs_row)
             case 1:
                 gvs_row = GvsSingleResultRow(
-                    self.osv_file.date,
-                    self.osv.address_record,
-                    self.osv.accural_record,
+                    self.osv.date,
+                    self.osv.record.address,
+                    self.osv.record.accural,
                     self.account_details,
                     gvs_details_rows[0],
                     self.buildings,
@@ -307,9 +274,9 @@ class RegionDir:
                 for num, gvs_details_row in enumerate(gvs_details_rows):
                     if not num:
                         gvs_row = GvsMultipleResultFirstRow(
-                            self.osv_file.date,
-                            self.osv.address_record,
-                            self.osv.accural_record,
+                            self.osv.date,
+                            self.osv.record.address,
+                            self.osv.record.accural,
                             self.account_details,
                             gvs_details_row,
                             self.buildings,
@@ -317,9 +284,9 @@ class RegionDir:
                         )
                     else:
                         gvs_row = GvsMultipleResultSecondRow(
-                            self.osv_file.date,
-                            self.osv.address_record,
-                            self.osv.accural_record,
+                            self.osv.date,
+                            self.osv.record.address,
+                            self.osv.record.accural,
                             self.account_details,
                             gvs_details_row,
                             self.buildings,
@@ -328,7 +295,7 @@ class RegionDir:
                     self.results.calculations.add_row(gvs_row)
         self._add_initial_balance_row(service)
 
-    def _process_gvs_reaccural(self, record_type: CalculationRecordType):
+    def _add_gvs_reaccural(self, record_type: CalculationRecordType):
         match record_type:
             case CalculationRecordType.GVS_REACCURAL:
                 service = Service.GVS
@@ -338,7 +305,7 @@ class RegionDir:
                 raise ValueError("Unknown result record type")
         try:
             reaccural_sum = self.account_details.get_service_month_reaccural(
-                self.osv_file.date,
+                self.osv.date,
                 service,
             )
         except NoServiceRow:
@@ -349,20 +316,20 @@ class RegionDir:
             os.path.join(
                 self.base_dir,
                 self.conf["gvs.dir"],
-                f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+                f"{self.osv.date.month:02d}.{self.osv.date.year}.xlsx",
             ),
             int(self.conf["gvs_details.header_row"]),
             filter_func=lambda x: x.account,
         )
         gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
-            ("account",), (self.osv.address_record.account,)
+            ("account",), (self.osv.record.address.account,)
         )
         try:
             gvs_details_row: GvsDetailsRecord = gvs_details_rows[0]
         except IndexError:
             gvs_details_row = GvsDetailsRecord.get_dummy_instance()
         reaccural_details = Reaccural(
-            self.account_details, self.osv_file.date, reaccural_sum, service
+            self.account_details, self.osv.date, reaccural_sum, service
         )
         reaccural_details.init_type(
             os.path.join(self.base_dir, self.conf["gvs.dir"]),
@@ -370,8 +337,8 @@ class RegionDir:
         )
         for rec in reaccural_details.records:
             gvs_reaccural_row = GvsReaccuralResultRow(
-                self.osv_file.date,
-                self.osv.address_record,
+                self.osv.date,
+                self.osv.record.address,
                 gvs_details_row,
                 rec.date,
                 rec.sum,
@@ -386,27 +353,27 @@ class RegionDir:
                 )
             self.results.calculations.add_row(gvs_reaccural_row)
 
-    def _process_gvs_elevated(self):
+    def _add_gvs_elevated(self):
         service = Service.GVS_ELEVATED
         gvs_details = GvsDetailsFileSingleton(
             os.path.join(
                 self.base_dir,
                 self.conf["gvs.dir"],
-                f"{self.osv_file.date.month:02d}.{self.osv_file.date.year}.xlsx",
+                f"{self.osv.date.month:02d}.{self.osv.date.year}.xlsx",
             ),
             int(self.conf["gvs_details.header_row"]),
             lambda x: x.account,
         )
         gvs_details_rows: list[GvsDetailsRecord] = gvs_details.as_filtered_list(
-            ("account",), (self.osv.address_record.account,)
+            ("account",), (self.osv.record.address.account,)
         )
         if not gvs_details_rows:
             return
         try:
             row = GvsElevatedResultRow(
-                self.osv_file.date,
-                self.osv.address_record,
-                self.osv.accural_record,
+                self.osv.date,
+                self.osv.record.address,
+                self.osv.record.accural,
                 self.account_details,
                 gvs_details_rows[0],
                 self.buildings,
@@ -421,7 +388,7 @@ class RegionDir:
         service = Service.HEATING
         row = HeatingReaccuralResultRow(
             correction_date,
-            self.osv.address_record,
+            self.osv.record.address,
             self.buildings,
             self.building_record.has_odpu,
             correction_sum,
@@ -429,13 +396,13 @@ class RegionDir:
         )
         self.results.calculations.add_row(row)
 
-    def _process_heating_correction(self):
+    def _add_heating_correction(self):
         service = Service.HEATING
-        if self.osv_file.date.month != self.building_record.correction_month:
+        if self.osv.date.month != self.building_record.correction_month:
             return
         try:
             reaccural = self.account_details.get_service_month_reaccural(
-                self.osv_file.date, service
+                self.osv.date, service
             )
         except NoServiceRow:
             return
@@ -446,7 +413,7 @@ class RegionDir:
             correction_record: HeatingCorrectionRecord = (
                 self.heating_corrections.get_account_row(
                     self.account,
-                    f"{self.osv_file.date.year-1}",
+                    f"{self.osv.date.year-1}",
                 )
             )
         except ValueError:
@@ -461,7 +428,7 @@ class RegionDir:
             logging.warning(
                 "No heating correction for %s in %s. Reaccural/Correction: %s/%s",
                 self.account,
-                self.osv_file.date,
+                self.osv.date,
                 reaccural,
                 correction_record.year_correction,
             )
@@ -471,7 +438,7 @@ class RegionDir:
         ):
             correction_sum = getattr(correction_record, month_abbr)
             correction_volume = getattr(correction_record, f"vkv_{month_abbr}")
-            correction_date = MonthYear(month_num, self.osv_file.date.year - 1)
+            correction_date = MonthYear(month_num, self.osv.date.year - 1)
             if not correction_sum and not correction_volume:
                 continue
             if correction_sum < 0:
@@ -490,8 +457,8 @@ class RegionDir:
                 )
             odpu_volume = getattr(odpu_records[0], month_abbr)
             row = HeatingCorrectionResultRow(
-                self.osv_file.date,
-                self.osv.address_record,
+                self.osv.date,
+                self.osv.record.address,
                 correction_date,
                 correction_sum,
                 correction_volume,
@@ -508,7 +475,7 @@ class RegionDir:
         correction = HeatingPositiveCorrection(
             self.account_details,
             self.heating_corrections,
-            self.osv_file.date,
+            self.osv.date,
             service,
         )
         if HeatingCorrectionAccountStatus.CLOSED_LAST_YEAR not in correction.type:
@@ -517,15 +484,15 @@ class RegionDir:
             )
             total_closing_balance: Decimal
             total_future_installment: Decimal
-            for month_num in range(self.osv_file.date.month, 13):
+            for month_num in range(self.osv.date.month, 13):
                 correction_date = MonthYear(month_num, correction.current_year)
                 reaccural_sum = Decimal(
                     self.account_details.get_service_month_reaccural(
-                        MonthYear(month_num, self.osv_file.date.year),
+                        MonthYear(month_num, self.osv.date.year),
                         service,
                     )
                 ).quantize(Decimal("0.01"))
-                if month_num == self.osv_file.date.month:
+                if month_num == self.osv.date.month:
                     _total_correction = Decimal(
                         correction.last_year_correction.year_correction
                     )
@@ -537,8 +504,8 @@ class RegionDir:
                     total_closing_balance += reaccural_sum  # type: ignore
                     total_future_installment -= reaccural_sum  # type: ignore
                 row = HeatingPositiveCorrectionResultRow(
-                    self.osv_file.date,
-                    self.osv.address_record,
+                    self.osv.date,
+                    self.osv.record.address,
                     correction_date,
                     service,
                     future_installment,
@@ -556,8 +523,8 @@ class RegionDir:
                     ).quantize(Decimal("0.01"))
                     correction_date = MonthYear(month_num + 1, correction.current_year)
                     row = HeatingPositiveCorrectionResultRow(
-                        self.osv_file.date,
-                        self.osv.address_record,
+                        self.osv.date,
+                        self.osv.record.address,
                         correction_date,
                         service,
                         future_installment,
@@ -569,7 +536,7 @@ class RegionDir:
                     try:
                         next_month_reaccural = Decimal(
                             self.account_details.get_service_month_reaccural(
-                                MonthYear(month_num + 1, self.osv_file.date.year),
+                                MonthYear(month_num + 1, self.osv.date.year),
                                 service,
                             )
                         ).quantize(Decimal("0.01"))
@@ -584,7 +551,7 @@ class RegionDir:
                     if excessive_reaccural:
                         row = HeatingPositiveCorrectionExcessiveReaccuralResultRow(
                             correction_date.next,
-                            self.osv.address_record,
+                            self.osv.record.address,
                             correction_date,
                             excessive_reaccural,
                             service,
@@ -593,15 +560,15 @@ class RegionDir:
                         self.results.calculations.add_row(row)
                     break
         else:
-            correction_date = self.osv_file.date
+            correction_date = self.osv.date
             future_installment = None
             total_closing_balance = Decimal(
                 correction.last_year_correction.year_correction
             ).quantize(Decimal("0.01"))
             total_future_installment = Decimal("0.00")
             row = HeatingPositiveCorrectionResultRow(
-                self.osv_file.date,
-                self.osv.address_record,
+                self.osv.date,
+                self.osv.record.address,
                 correction_date,
                 service,
                 future_installment,
@@ -613,8 +580,8 @@ class RegionDir:
 
     def _add_closing_balance_records(self, service):
         for cur_year, start_month in [
-            (self.osv_file.date.year - 1, 12),
-            (self.osv_file.date.year, self.osv_file.date.month),
+            (self.osv.date.year - 1, 12),
+            (self.osv.date.year, self.osv.date.month),
         ]:
             try:
                 correction_record: HeatingCorrectionRecord = (
@@ -639,8 +606,8 @@ class RegionDir:
                 if correction_sum:
                     break
                 row = HeatingNegativeCorrectionZeroResultRow(
-                    self.osv_file.date,
-                    self.osv.address_record,
+                    self.osv.date,
+                    self.osv.record.address,
                     correction_date,
                     self.account_details,
                     service,
@@ -649,7 +616,7 @@ class RegionDir:
                 self.results.calculations.add_row(row)
 
     def _add_accounts_record(self):
-        rec = self.osv.address_record
+        rec = self.osv.record.address
         account_data: AccountChangebleInfo = (rec.name, rec.population)
         if (
             rec.account in self.seen_account_info
@@ -657,12 +624,12 @@ class RegionDir:
         ):
             return
         self.seen_account_info[rec.account] = account_data
-        row = AccountsResultRow(self.osv_file.date, rec)
+        row = AccountsResultRow(self.osv.date, rec)
         self.results.accounts.add_row(row)
 
     def _add_people_records(self):
         fio_delimeter = ";"
-        rec = self.osv.address_record
+        rec = self.osv.record.address
         if not rec.name:
             return
         if fio_delimeter not in rec.name:
@@ -678,40 +645,25 @@ class RegionDir:
             name = name.strip()
             if not name:
                 continue
-            row = PeopleResultRow(self.osv_file.date, rec, name)
+            row = PeopleResultRow(self.osv.date, rec, name)
             self.results.people.add_row(row)
 
     def process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
-        self.osv_file = OsvFile(osv_file_name, self.conf)
-        column_indexes = OsvColumnIndex.from_workbook(
-            self.osv_file,
-            int(self.conf["osv.header_row"]),
-            [
-                "Адрес",
-                "Отопление",
-                "Тепловая энергия для подогрева воды",
-                "Перерасчеты",
-                "Всего",
-                "Тепловая энергия для подогрева воды (повышенный %)",
-            ],
-        )
-        for row in self.osv_file.get_data_row():
-            osv = self._init_current_osv_row(row, column_indexes)
-            if not osv:
+        self.osv = OsvFile(osv_file_name, self.conf)
+        for _ in self.osv.init_next_record(self.buildings):
+            if not self._is_debugging_account(self.osv.record.address.account):
                 continue
-            self.osv = osv
-            if not self._is_debugging_current_account():
-                continue
-            self.account = self.osv.address_record.account
+            self.account = self.osv.record.address.account
             try:
+                account_details_path = os.path.join(
+                    self.base_dir,
+                    self.conf["account_details.dir"],
+                    f"{self.osv.record.address.account}.xlsx",
+                )
                 self.account_details = AccountDetailsFileSingleton(
                     self.account,
-                    os.path.join(
-                        self.base_dir,
-                        self.conf["account_details.dir"],
-                        f"{self.osv.address_record.account}.xlsx",
-                    ),
+                    account_details_path,
                     int(self.conf["account_details.header_row"]),
                 )
             except FileNotFoundError:
@@ -723,30 +675,24 @@ class RegionDir:
                 )
                 continue
             self.building_record = self.buildings.get_address_row(
-                self.osv.address_record.address,
-                str(self.osv_file.date.year),
+                self.osv.record.address.address,
+                str(self.osv.date.year),
             )
             if self.is_config_option_true("fill_accounts"):
                 self._add_accounts_record()
             if self.is_config_option_true("fill_people"):
                 self._add_people_records()
             if self.is_config_option_true("fill_calculations"):
-                self._process_heating()
-                self._process_gvs()
-                self._process_gvs_reaccural(CalculationRecordType.GVS_REACCURAL)
-                self._process_gvs_elevated()
-                self._process_gvs_reaccural(
-                    CalculationRecordType.GVS_REACCURAL_ELEVATED
-                )
-                self._process_heating_correction()
-        self.osv_file.close()
-
-    def process_osvs(self) -> None:
-        "Reads OSV files row by row and writes data to result table"
+                self._add_heating()
+                self._add_gvs()
+                self._add_gvs_elevated()
+                self._add_gvs_reaccural(CalculationRecordType.GVS_REACCURAL)
+                self._add_gvs_reaccural(CalculationRecordType.GVS_REACCURAL_ELEVATED)
+                self._add_heating_correction()
+        self.osv.close()
 
     def close(self):
         "Closes all file descriptors that might still be open"
-
         for attr_name in dir(self):
             if attr_name.startswith("_"):
                 continue

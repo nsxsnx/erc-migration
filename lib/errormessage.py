@@ -1,5 +1,6 @@
 """Error/warning message handlers"""
 
+
 import logging
 from abc import ABC
 
@@ -10,7 +11,7 @@ class ErrorMessageHandler(ABC):
     def __init__(self) -> None:
         self.error_messages: dict[str, list] = {}
 
-    def _save_message(self, error_type: str, error_hash_key: str) -> bool:
+    def _save_message(self, error_type: str, error_hash_key: str):
         "Remembers new error message of a particular type"
         error_list: list = self.error_messages.get(error_type, [])
         error_list.append(error_hash_key)
@@ -23,13 +24,13 @@ class ErrorMessageHandler(ABC):
             return False
         return True
 
-    def show(self, *args: object) -> None:
+    def show(self, *args: str) -> None:
         """
         Shows error message via 'self._show()' only once
 
         ARGS:
-            error_type     : str - indicates type of error message
-            error_hash_key : str - unique hash key to determine a message
+            error_type     : str - indicates a type of error message
+            error_hash_key : str - unique hash key to distinguish a message
             log_message    : str - lazy-formatted error message
             log_args       ...   - additional arguments for error message
         """
