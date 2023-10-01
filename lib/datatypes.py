@@ -1,10 +1,9 @@
 "General data structures"
 
-from __future__ import annotations
-
 import calendar
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Self
 
 
 @dataclass(frozen=True)
@@ -17,7 +16,7 @@ class MonthYear:
         return (self.year, self.month) < (other.year, other.month)
 
     @property
-    def previous(self) -> MonthYear:
+    def previous(self) -> Self:
         "Returns an instance of the previous month"
         if self.month > 1:
             return MonthYear(self.month - 1, self.year)
@@ -25,7 +24,7 @@ class MonthYear:
             return MonthYear(12, self.year - 1)
 
     @property
-    def next(self) -> MonthYear:
+    def next(self) -> Self:
         "Returns an instance of the next month"
         if self.month < 12:
             return MonthYear(self.month + 1, self.year)
@@ -44,6 +43,12 @@ class MonthYear:
     def first_day(self) -> str:
         "Returns the first day of the month as str"
         return f"01.{str(self)}"
+
+    @classmethod
+    def from_str(cls, date_str: str) -> Self:
+        "Creates class object from `mm.yyyy` string"
+        month, year = date_str.strip().split(".")
+        return cls(int(month), int(year))
 
 
 class Service(StrEnum):

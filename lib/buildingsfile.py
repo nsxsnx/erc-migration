@@ -1,9 +1,11 @@
 """Buildings details table"""
 
+from decimal import Decimal
 import logging
 import re
 from dataclasses import dataclass
 from functools import cache
+from typing import Any, Callable
 
 from lib.datatypes import MonthYear
 from lib.exceptions import NoAddressRow
@@ -34,6 +36,28 @@ class BuildingRecord:
 class BuildingsFile(BaseMultisheetWorkBookData):
     "Table with buildings addresses"
 
+    def __init__(
+        self,
+        filename: str,
+        header_row: int,
+        record_class: type,
+        tariffs_special: str | None = None,
+        filter_func: Callable[[Any], bool] | None = None,
+        max_col: int | None = None,
+    ) -> None:
+        super().__init__(filename, header_row, record_class, filter_func, max_col)
+        self.tariff_special: dict[MonthYear, Decimal] = dict()
+        if tariffs_special:
+            for tariff in tariffs_special.split("|"):
+                tariff = tariff.strip()
+                if not tariff:
+                    continue
+                date_str, value_str = tariff.split(":", 2)
+                date = MonthYear.from_str(date_str.strip())
+                value = Decimal(value_str.strip())
+                self.tariff_special[date] = value
+                logging.info("Special tariff %s applied for %s", value, date)
+
     def _reg_match_address(self, address: str) -> dict[str, str]:
         match = re.match(ADDRESS_REGEXP, address)
         if not match:
@@ -61,9 +85,15 @@ class BuildingsFile(BaseMultisheetWorkBookData):
 
     @cache  # pylint: disable=W1518
     def get_tariff(
-        self, address: str, date: MonthYear, use_reduction_factor: bool = False
-    ):
+        self,
+        address: str,
+        date: MonthYear,
+        use_reduction_factor: bool = False,
+    ) -> Decimal:
         "Returns tariff for a given address on a given date"
         row: BuildingRecord = self.get_address_row(address, str(date.year))
         tariff = row.tariff_first if date.month < 7 else row.tariff_second
-        return tariff * row.coefficient if use_reduction_factor else tariff
+        tariff = Decimal(tariff)
+        if date in self.tariff_special:
+            return self.tariff_special[date]
+        return tariff * Decimal(row.coefficient) if use_reduction_factor else tariff

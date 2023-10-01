@@ -1,5 +1,6 @@
 """Energobilling data calculation/formatting"""
 
+
 import calendar
 import configparser
 import logging
@@ -97,6 +98,7 @@ class RegionDir:
             os.path.join(self.base_dir, conf["file.buildings"]),
             1,
             BuildingRecord,
+            conf["tariffs_special"] if "tariffs_special" in conf else None,
         )
         logging.info(
             "Read buildings: %s sheets, %s elements total",
@@ -150,11 +152,11 @@ class RegionDir:
             except NoAddressRow:
                 return None
             osv_accural_rec = OsvAccuralRecord(
-                float(row[column_indexes.heating]),
-                float(row[column_indexes.gvs]),
-                float(row[column_indexes.reaccurance]),
-                float(row[column_indexes.total]),
-                float(row[column_indexes.gvs_elevated_percent]),
+                Decimal(row[column_indexes.heating]),
+                Decimal(row[column_indexes.gvs]),
+                Decimal(row[column_indexes.reaccurance]),
+                Decimal(row[column_indexes.total]),
+                Decimal(row[column_indexes.gvs_elevated_percent]),
             )
             logging.debug("Accural record %s understood as %s", row[0], osv_accural_rec)
         except AttributeError as error:

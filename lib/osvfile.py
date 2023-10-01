@@ -1,5 +1,6 @@
 "Base class to work with OSV-formatted Excel tables"
 
+from decimal import Decimal
 from functools import total_ordering
 import logging
 from pathlib import Path
@@ -31,11 +32,11 @@ osvdata_regexp_compiled: list[re.Pattern] = []
 @dataclass
 class OsvAccuralRecord:
     'Stores OSV "accural" values'
-    heating: float
-    gvs: float
-    reaccural: float
-    payment: float
-    gvs_elevated_percent: float
+    heating: Decimal
+    gvs: Decimal
+    reaccural: Decimal
+    payment: Decimal
+    gvs_elevated_percent: Decimal
 
 
 @dataclass

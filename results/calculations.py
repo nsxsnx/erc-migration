@@ -88,7 +88,7 @@ class HeatingResultRow(CalculationsResultRow):
         )
         has_heating_average = building.has_heating_average
         if has_odpu and has_heating_average:
-            quantity = f"{float(accural.heating) / self.price:.4f}".replace(".", ",")
+            quantity = f"{accural.heating / self.price:.4f}".replace(".", ",")
             quantity_average = quantity
             sum_average = accural.heating
             self.set_field(26, quantity_average)
@@ -218,7 +218,7 @@ class HeatingReaccuralResultRow(CalculationsResultRow):
         )
         has_heating_average = building.has_heating_average
         if has_odpu and has_heating_average:
-            quantity = f"{float(accural_sum) / self.price:.4f}".replace(".", ",")
+            quantity = f"{Decimal(accural_sum) / self.price:.4f}".replace(".", ",")
             quantity_average = quantity
             sum_average = accural_sum
             self.set_field(26, quantity_average)
@@ -227,7 +227,7 @@ class HeatingReaccuralResultRow(CalculationsResultRow):
         else:
             # chapter 4:
             self.set_field(30, data.population)
-            quantity = f"{accural_sum / self.price:.4f}".replace(".", ",")
+            quantity = f"{Decimal(accural_sum) / self.price:.4f}".replace(".", ",")
             quantity_normative = quantity
             sum_normative = accural_sum
             self.set_field(31, quantity_normative)
@@ -404,7 +404,7 @@ class GvsReaccuralResultRow(CalculationsResultRow):
             self.set_field(14, gvs.counter_number)
             self.set_field(15, 6)
             self.set_field(16, 3)
-        quantity = f"{reaccural_sum/self.price:.4f}".replace(".", ",")
+        quantity = f"{Decimal(reaccural_sum)/self.price:.4f}".replace(".", ",")
         # chapter 5: same as chapter 7 of GvsSingleResultRow
         match reaccural_type:
             case ReaccuralType.IPU:
@@ -457,7 +457,7 @@ class GvsElevatedResultRow(GvsSingleResultRow):
             accural_sum = account_details.get_service_month_accural(date, service)
         except NoServiceRow:
             accural_sum = 0
-        quantity = f"{accural_sum/self.price:.4f}".replace(".", ",")
+        quantity = f"{Decimal(accural_sum)/self.price:.4f}".replace(".", ",")
         if gvs.consumption_ipu:
             self.set_field(23, quantity)
             self.set_field(24, accural_sum)
@@ -489,7 +489,7 @@ class GvsElevatedResultRow(GvsSingleResultRow):
 
 class HeatingCorrectionResultRow(CalculationsResultRow):
     "Result row for heating last-year correction"
-    rounding_error: list = [0.0]
+    rounding_error: list = [Decimal(0.0)]
 
     def __init__(
         self,
@@ -513,7 +513,7 @@ class HeatingCorrectionResultRow(CalculationsResultRow):
         self.set_field(19, f"23.{correction_date.month:02d}.{correction_date.year}")
         self.set_field(20, "Контрольное")
         self.set_field(22, odpu_volume)
-        accural_sum = correction_volume * self.price - correction_sum
+        accural_sum = Decimal(correction_volume) * self.price - Decimal(correction_sum)
         accural_sum_rounded = round(accural_sum, 2)
         # loosing some penny because of rounding
         # compensate for it:
