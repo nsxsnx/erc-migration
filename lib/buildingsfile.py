@@ -28,9 +28,14 @@ class BuildingRecord:
     has_odpu: str
     has_heating_average: str
     correction_month: int
-    tariff_first: float
-    tariff_second: float
-    coefficient: float
+    tariff_first: Decimal
+    tariff_second: Decimal
+    coefficient: Decimal
+
+    def __post_init__(self):
+        self.tariff_first = Decimal(self.tariff_first).quantize(Decimal("0.01"))
+        self.tariff_second = Decimal(self.tariff_second).quantize(Decimal("0.01"))
+        self.coefficient = Decimal(self.coefficient).quantize(Decimal("0.01"))
 
 
 class BuildingsFile(BaseMultisheetWorkBookData):
@@ -93,7 +98,6 @@ class BuildingsFile(BaseMultisheetWorkBookData):
         "Returns tariff for a given address on a given date"
         row: BuildingRecord = self.get_address_row(address, str(date.year))
         tariff = row.tariff_first if date.month < 7 else row.tariff_second
-        tariff = Decimal(tariff)
         if date in self.tariff_special:
             return self.tariff_special[date]
-        return tariff * Decimal(row.coefficient) if use_reduction_factor else tariff
+        return tariff * row.coefficient if use_reduction_factor else tariff
