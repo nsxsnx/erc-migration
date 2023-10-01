@@ -25,6 +25,7 @@ from lib.heatingcorrections import (
     HeatingVolumesOdpuFile,
     HeatingVolumesOdpuRecord,
 )
+from lib.helpers import BaseWorkBook
 from lib.osvfile import (
     OSVDATA_REGEXP,
     OsvAccuralRecord,
@@ -156,8 +157,8 @@ class RegionDir:
                 float(row[column_indexes.gvs_elevated_percent]),
             )
             logging.debug("Accural record %s understood as %s", row[0], osv_accural_rec)
-        except AttributeError as err:
-            logging.warning("%s. Malformed record: %s", err, row)
+        except AttributeError as error:
+            logging.warning("%s. Malformed record: %s", error, row)
             return None
         return OsvRecord(osv_address_rec, osv_accural_rec)
 
@@ -678,7 +679,7 @@ class RegionDir:
             row = PeopleResultRow(self.osv_file.date, rec, name)
             self.results.people.add_row(row)
 
-    def _process_osv(self, osv_file_name) -> None:
+    def process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
         self.osv_file = OsvFile(osv_file_name, self.conf)
         column_indexes = OsvColumnIndex.from_workbook(
@@ -738,36 +739,21 @@ class RegionDir:
                 self._process_heating_correction()
         self.osv_file.close()
 
-    def read_osvs(self) -> None:
+    def process_osvs(self) -> None:
         "Reads OSV files row by row and writes data to result table"
-        for file_name in self.osv_files:
-            try:
-                self._process_osv(file_name)
-            except Exception as err:  # pylint: disable=W0718
-                logging.critical("General exception: %s.", err.args)
-                raise
-            finally:
-                self.close()
 
     def close(self):
         "Closes all file descriptors that might still be open"
 
-        try:
-            self.account_details.close()
-        except AttributeError:
-            pass
-        try:
-            self.buildings.close()
-        except AttributeError:
-            pass
-        try:
-            self.osv_file.close()
-        except AttributeError:
-            pass
-        try:
-            self.results.close()
-        except AttributeError:
-            pass
+        for attr_name in dir(self):
+            if attr_name.startswith("_"):
+                continue
+            attr = getattr(self, attr_name)
+            if not attr:
+                continue
+            if not isinstance(attr, BaseWorkBook):
+                continue
+            attr.close()
 
     def __enter__(self):
         return self
@@ -791,7 +777,11 @@ if __name__ == "__main__":
         region: RegionDir
         region_path = os.path.join(config["DEFAULT"]["base_dir"], section)
         with RegionDir(region_path, config[section]) as region:
-            region.read_osvs()
+            try:
+                [region.process_osv(osv) for osv in region.osv_files]
+            except Exception as err:  # pylint: disable=W0718
+                logging.critical("General exception: %s.", err.args)
+                raise
             if not region.is_config_option_true("fill_calculations"):
                 region.results.save()
                 continue
