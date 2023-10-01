@@ -133,7 +133,10 @@ class AccountDetailsFileSingleton(BaseWorkBookData, metaclass=SingletonWithArg):
         self, date: MonthYear, service: str
     ) -> AccountDetailsRecord:
         result = list(
-            filter(lambda r: (r.date == date and r.service == service), self.records)
+            filter(
+                lambda r: (r.date == date and r.service == service),  # type:ignore
+                self.records,
+            )
         )
         match len(result):
             case 0:

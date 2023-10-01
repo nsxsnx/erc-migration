@@ -1,6 +1,8 @@
 "Base class to work with OSV-formatted Excel tables"
 
+from functools import total_ordering
 import logging
+from pathlib import Path
 import re
 import sys
 from dataclasses import dataclass
@@ -10,7 +12,7 @@ from typing import Self
 from openpyxl import load_workbook
 
 from lib.datatypes import MonthYear
-from lib.helpers import BaseWorkBook
+from lib.helpers import BaseWorkBook, ExcelHelpers
 
 OSVDATA_REGEXP = [
     r"^(?P<type>Частная|Муниципальная|Служебная|Общежитие|Частная без регистр.|"
@@ -107,3 +109,51 @@ class OsvFile(BaseWorkBook):
 
     def close(self):
         self.workbook.close()
+
+
+@total_ordering
+class OsvPath(type(Path())):
+    "Path with custom sorting behavior and validation"
+
+    def __new__(cls, *args, **kwargs) -> Self:
+        return super().__new__(cls, *args, **kwargs)
+
+    def __lt__(self, other):
+        self_date = MonthYear(int(self.name[0:2]), int(self.name[2:6]))
+        other_date = MonthYear(int(other.name[0:2]), int(other.name[2:6]))
+        return self_date < other_date
+
+    def validate(self):
+        "Checks if ``Self`` conforms some requirements"
+
+        if not self.with_suffix(".xlsx"):
+            logging.critical("Non *.xlsx found in OSV_DIR, exiting")
+            sys.exit(1)
+
+
+@dataclass
+class OsvColumnIndex:
+    "Indexes of fields in the table, zero-based"
+    address: int
+    heating: int
+    gvs: int
+    reaccurance: int
+    total: int
+    gvs_elevated_percent: int
+
+    @classmethod
+    def from_workbook(cls, workbook, header_row, headers) -> Self:
+        "Calculates indexes of columns in the table"
+
+        if workbook is None:
+            raise ValueError("OSV file was not initialized yet")
+        try:
+            return cls(
+                *[
+                    ExcelHelpers.get_col_by_name(workbook.sheet, header, header_row) - 1
+                    for header in headers
+                ]
+            )
+        except ValueError as err:
+            logging.warning("Check OSV column names and quantity: %s", err)
+            raise

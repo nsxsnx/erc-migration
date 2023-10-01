@@ -65,7 +65,7 @@ class Reaccural:
     def try_decompose_to_previous_accurance(self) -> None:
         """
         Second method of calculating reaccurance value for each month.
-        Reminder of the addition of N previous months must be less then
+        Reminder of the addition of N previous months must be less than
         accurance of the next previous month.
         """
         date = self.date

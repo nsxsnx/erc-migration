@@ -5,10 +5,7 @@ import configparser
 import logging
 import os
 import re
-import sys
-from dataclasses import dataclass
 from decimal import Decimal
-from os.path import basename
 from typing import Mapping
 
 from lib.buildingsfile import BuildingRecord, BuildingsFile
@@ -28,12 +25,13 @@ from lib.heatingcorrections import (
     HeatingVolumesOdpuFile,
     HeatingVolumesOdpuRecord,
 )
-from lib.helpers import BaseWorkBook, ExcelHelpers
 from lib.osvfile import (
     OSVDATA_REGEXP,
     OsvAccuralRecord,
     OsvAddressRecord,
+    OsvColumnIndex,
     OsvFile,
+    OsvPath,
     OsvRecord,
     osvdata_regexp_compiled,
 )
@@ -65,17 +63,6 @@ from results.filledworkbook import (
 )
 
 CONFIG_PATH = "./config.ini"
-
-
-@dataclass
-class ColumnIndex:
-    "Indexes of fields in the table, zero-based"
-    address: int
-    heating: int
-    gvs: int
-    reaccurance: int
-    total: int
-    gvs_elevated_percent: int
 
 
 AccountChangebleInfo = tuple[str, str]
@@ -137,62 +124,20 @@ class RegionDir:
             self.heating_volumes_odpu.get_strings_count(),
         )
         osv_files = [
-            os.path.join(self.osv_path, f)
+            OsvPath(os.path.join(self.osv_path, f))
             for f in os.listdir(self.osv_path)
             if os.path.isfile(os.path.join(self.osv_path, f)) and not f.startswith(".")
         ]
-        self.osv_files: list[str] = sorted(
-            osv_files, key=lambda s: (basename(s)[2:6], basename(s)[0:2])
-        )
+        self.osv_files: list[OsvPath] = sorted(osv_files)
         self.osv_files = self.osv_files[: int(self.conf["max_osv_files"])]
-        for file in self.osv_files:
-            if file.endswith(".xlsx"):
-                continue
-            else:
-                logging.critical("Non *.xlsx found in OSV_DIR, exiting")
-                sys.exit(1)
+        _ = [file.validate() for file in self.osv_files]
         self.results = ResultWorkBook(self.base_dir, self.conf)
 
-    def _get_osv_column_indexes(self) -> ColumnIndex:
-        "Calculates indexes of columns in the table"
-        if self.osv_file is None:
-            raise ValueError("OSV file was not initialized yet")
-        try:
-            header_row = int(self.conf["osv.header_row"])
-            column_index = ColumnIndex(
-                ExcelHelpers.get_col_by_name(self.osv_file.sheet, "Адрес", header_row)
-                - 1,
-                ExcelHelpers.get_col_by_name(
-                    self.osv_file.sheet, "Отопление", header_row
-                )
-                - 1,
-                ExcelHelpers.get_col_by_name(
-                    self.osv_file.sheet,
-                    "Тепловая энергия для подогрева воды",
-                    header_row,
-                )
-                - 1,
-                ExcelHelpers.get_col_by_name(
-                    self.osv_file.sheet, "Перерасчеты", header_row
-                )
-                - 1,
-                ExcelHelpers.get_col_by_name(self.osv_file.sheet, "Всего", header_row)
-                - 1,
-                ExcelHelpers.get_col_by_name(
-                    self.osv_file.sheet,
-                    "Тепловая энергия для подогрева воды (повышенный %)",
-                    header_row,
-                )
-                - 1,
-            )
-        except ValueError as err:
-            logging.warning("Check column names: %s", err)
-            raise
-        return column_index
-
-    def _init_current_osv_row(self, row, column_index_data) -> OsvRecord | None:
+    def _init_current_osv_row(
+        self, row, column_indexes: OsvColumnIndex
+    ) -> OsvRecord | None:
         "Parses OSV row and returns OvsRecord instance"
-        address_cell = row[column_index_data.address]
+        address_cell = row[column_indexes.address]
         try:
             osv_address_rec = OsvAddressRecord.get_instance(address_cell)
             logging.debug("Address record %s understood as %s", row[0], osv_address_rec)
@@ -204,11 +149,11 @@ class RegionDir:
             except NoAddressRow:
                 return None
             osv_accural_rec = OsvAccuralRecord(
-                float(row[column_index_data.heating]),
-                float(row[column_index_data.gvs]),
-                float(row[column_index_data.reaccurance]),
-                float(row[column_index_data.total]),
-                float(row[column_index_data.gvs_elevated_percent]),
+                float(row[column_indexes.heating]),
+                float(row[column_indexes.gvs]),
+                float(row[column_indexes.reaccurance]),
+                float(row[column_indexes.total]),
+                float(row[column_indexes.gvs_elevated_percent]),
             )
             logging.debug("Accural record %s understood as %s", row[0], osv_accural_rec)
         except AttributeError as err:
@@ -736,9 +681,20 @@ class RegionDir:
     def _process_osv(self, osv_file_name) -> None:
         "Process OSV file currently set as self.osv_file"
         self.osv_file = OsvFile(osv_file_name, self.conf)
-        column_index_data = self._get_osv_column_indexes()
+        column_indexes = OsvColumnIndex.from_workbook(
+            self.osv_file,
+            int(self.conf["osv.header_row"]),
+            [
+                "Адрес",
+                "Отопление",
+                "Тепловая энергия для подогрева воды",
+                "Перерасчеты",
+                "Всего",
+                "Тепловая энергия для подогрева воды (повышенный %)",
+            ],
+        )
         for row in self.osv_file.get_data_row():
-            osv = self._init_current_osv_row(row, column_index_data)
+            osv = self._init_current_osv_row(row, column_indexes)
             if not osv:
                 continue
             self.osv = osv
@@ -796,16 +752,28 @@ class RegionDir:
     def close(self):
         "Closes all file descriptors that might still be open"
 
-        def _close(obj: BaseWorkBook):
-            try:
-                obj.close()
-            except AttributeError:
-                pass
+        try:
+            self.account_details.close()
+        except AttributeError:
+            pass
+        try:
+            self.buildings.close()
+        except AttributeError:
+            pass
+        try:
+            self.osv_file.close()
+        except AttributeError:
+            pass
+        try:
+            self.results.close()
+        except AttributeError:
+            pass
 
-        _close(self.account_details)
-        _close(self.buildings)
-        _close(self.osv_file)
-        _close(self.results)
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.close()
 
 
 if __name__ == "__main__":
@@ -820,11 +788,9 @@ if __name__ == "__main__":
     for exp in OSVDATA_REGEXP:
         osvdata_regexp_compiled.append(re.compile(exp))
     for section in config.sections():
-        region: RegionDir | None = None
-        try:
-            region = RegionDir(
-                os.path.join(config["DEFAULT"]["base_dir"], section), config[section]
-            )
+        region: RegionDir
+        region_path = os.path.join(config["DEFAULT"]["base_dir"], section)
+        with RegionDir(region_path, config[section]) as region:
             region.read_osvs()
             if not region.is_config_option_true("fill_calculations"):
                 region.results.save()
@@ -847,6 +813,3 @@ if __name__ == "__main__":
             filled_table.decrease_closing_balance()
             logging.info("Total changes: %s", filled_table.changes_counter)
             region.results.save()
-        finally:
-            if region:
-                region.close()
